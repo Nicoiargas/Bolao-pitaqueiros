@@ -24,7 +24,7 @@ export const TEAMS = [
 
 export async function getGlobalBet(userId) {
   try {
-    const { data } = await supabase.from('global_bets').select('*').eq('user_id', userId).single();
+    const { data } = await supabase.from('global_bets').select('*').eq('user_id', userId).maybeSingle();
     return data ?? null;
   } catch { return null; }
 }

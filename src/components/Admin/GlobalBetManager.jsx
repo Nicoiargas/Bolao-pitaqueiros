@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Select, Alert, Table, Tag, Space, Typography } from 'antd';
 import { TrophyOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import { getFlagUrl } from '../../services/flags';
 import {
   getGlobalResults, saveGlobalResults, getAllGlobalBets, calcGlobalPoints,
   GLOBAL_BET_POINTS, TEAMS,
@@ -8,6 +9,16 @@ import {
 
 const { Text } = Typography;
 const TEAM_OPTIONS = TEAMS.map(t => ({ value: t, label: t }));
+
+const FlagOption = ({ name }) => {
+  const url = getFlagUrl(name);
+  return (
+    <span>
+      {url && <img src={url} height={14} alt="" style={{ marginRight: 6, borderRadius: 2, verticalAlign: 'middle' }} />}
+      {name}
+    </span>
+  );
+};
 
 function GlobalBetManager() {
   const [form] = Form.useForm();
@@ -66,7 +77,15 @@ function GlobalBetManager() {
 
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item name="champion" label="🏆 Time Campeão (+20 pts)">
-            <Select showSearch placeholder="Selecione" options={TEAM_OPTIONS} allowClear />
+            <Select
+              showSearch
+              placeholder="Selecione"
+              options={TEAM_OPTIONS}
+              allowClear
+              optionFilterProp="label"
+              optionRender={(opt) => <FlagOption name={opt.data.value} />}
+              labelRender={({ value }) => value ? <FlagOption name={value} /> : null}
+            />
           </Form.Item>
           <Form.Item name="topScorer" label="⚽ Maior Artilheiro (+15 pts)">
             <Input placeholder="Nome do jogador" />
@@ -75,7 +94,15 @@ function GlobalBetManager() {
             <Input placeholder="Nome do jogador" />
           </Form.Item>
           <Form.Item name="mostGoalsTeam" label="🔥 Time com Mais Gols (+10 pts)">
-            <Select showSearch placeholder="Selecione" options={TEAM_OPTIONS} allowClear />
+            <Select
+              showSearch
+              placeholder="Selecione"
+              options={TEAM_OPTIONS}
+              allowClear
+              optionFilterProp="label"
+              optionRender={(opt) => <FlagOption name={opt.data.value} />}
+              labelRender={({ value }) => value ? <FlagOption name={value} /> : null}
+            />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={saving}>Salvar Resultados</Button>

@@ -128,15 +128,14 @@ export async function deleteMatch(matchId) {
 // ── Palpites ─────────────────────────────────────────────────────────────────
 
 export async function placeBet(userId, matchId, homeGoals, awayGoals, phaseId) {
-  const { data, error } = await supabase.from('bets').insert({
+  const { error } = await supabase.from('bets').insert({
     user_id:    userId,
     match_id:   matchId,
     phase_id:   phaseId,
     home_goals: homeGoals,
     away_goals: awayGoals,
-  }).select().single();
+  });
   if (error) throw error;
-  return data.id;
 }
 
 export async function getBetsByUser(userId) {

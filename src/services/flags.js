@@ -53,3 +53,11 @@ export function getFlagUrl(name) {
   const code = COUNTRY_CODES[name];
   return code ? `https://flagcdn.com/w40/${code}.png` : null;
 }
+
+export function getFlagEmoji(name) {
+  const code = COUNTRY_CODES[name];
+  if (!code) return '';
+  if (code === 'gb-sct') return '🏴󠁧󠁢󠁳󠁣󠁴󠁿';
+  if (code === 'gb-eng') return '🏴󠁧󠁢󠁥󠁮󠁧󠁿';
+  return [...code.toUpperCase()].map(c => String.fromCodePoint(127397 + c.charCodeAt(0))).join('');
+}

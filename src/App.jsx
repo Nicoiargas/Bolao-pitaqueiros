@@ -19,6 +19,13 @@ function App() {
   const [showReset, setShowReset]     = useState(false);
 
   useEffect(() => {
+    if (window.location.hostname === 'localhost') {
+      setUser({ uid: 'dev', email: 'dev@localhost', displayName: 'Dev', role: 'user', totalPoints: 0 });
+      setUserIsAdmin(false);
+      setLoading(false);
+      return;
+    }
+
     // Detecta recovery direto na URL (antes de qualquer listener)
     const params = new URLSearchParams(window.location.hash.substring(1));
     if (params.get('type') === 'recovery' && params.get('access_token')) {

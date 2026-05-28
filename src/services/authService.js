@@ -48,7 +48,12 @@ export async function registerUser(email, password, displayName) {
     total_points: 0,
   };
 
-  await supabase.from('users').insert(profile).catch(() => {});
+  const { error: profileError } = await supabase.from('users').insert(profile);
+  if (profileError) {
+    // Retry once after short delay (auth propagation race)
+    await new Promise(r => setTimeout(r, 600));
+    await supabase.from('users').insert(profile).catch(() => {});
+  }
   return mapUser(profile);
 }
 

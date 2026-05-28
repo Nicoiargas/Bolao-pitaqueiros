@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Form, Input, Button, Select, Alert, Tag, Space, Typography } from 'antd';
 import { TrophyOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import { getFlagUrl } from '../../services/flags';
 import {
   getGlobalBet, saveGlobalBet, getGlobalResults, calcGlobalPoints,
   GLOBAL_BET_CLOSING, GLOBAL_BET_POINTS, TEAMS,
@@ -10,6 +11,16 @@ import {
 const { Text } = Typography;
 
 const TEAM_OPTIONS = TEAMS.map(t => ({ value: t, label: t }));
+
+const FlagOption = ({ name }) => {
+  const url = getFlagUrl(name);
+  return (
+    <span>
+      {url && <img src={url} height={14} alt="" style={{ marginRight: 6, borderRadius: 2, verticalAlign: 'middle' }} />}
+      {name}
+    </span>
+  );
+};
 
 function GlobalBet({ user }) {
   const [form] = Form.useForm();
@@ -112,7 +123,14 @@ function GlobalBet({ user }) {
       ) : !isClosed ? (
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Form.Item name="champion" label="🏆 Time Campeão (+20 pts)" rules={[{ required: true, message: 'Escolha um time' }]}>
-            <Select showSearch placeholder="Selecione o time" options={TEAM_OPTIONS} />
+            <Select
+              showSearch
+              placeholder="Selecione o time"
+              options={TEAM_OPTIONS}
+              optionFilterProp="label"
+              optionRender={(opt) => <FlagOption name={opt.data.value} />}
+              labelRender={({ value }) => <FlagOption name={value} />}
+            />
           </Form.Item>
           <Form.Item name="topScorer" label="⚽ Maior Artilheiro (+15 pts)" rules={[{ required: true, message: 'Informe o jogador' }]}>
             <Input placeholder="Nome do jogador" />
@@ -121,7 +139,14 @@ function GlobalBet({ user }) {
             <Input placeholder="Nome do jogador" />
           </Form.Item>
           <Form.Item name="mostGoalsTeam" label="🔥 Time com Mais Gols (+10 pts)" rules={[{ required: true, message: 'Escolha um time' }]}>
-            <Select showSearch placeholder="Selecione o time" options={TEAM_OPTIONS} />
+            <Select
+              showSearch
+              placeholder="Selecione o time"
+              options={TEAM_OPTIONS}
+              optionFilterProp="label"
+              optionRender={(opt) => <FlagOption name={opt.data.value} />}
+              labelRender={({ value }) => <FlagOption name={value} />}
+            />
           </Form.Item>
           <Form.Item style={{ marginBottom: 0 }}>
             <Button type="primary" htmlType="submit" loading={saving} block size="large" style={{ fontWeight: 700 }}>
