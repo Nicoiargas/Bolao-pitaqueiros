@@ -1,0 +1,84 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #f5f5f5;
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Header brand */
+.brand-header {
+  background: linear-gradient(90deg, #008B46, #0033A0) !important;
+  padding: 0 24px !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  position: sticky !important;
+  top: 0;
+  z-index: 100;
+  height: 64px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.brand-header .ant-menu {
+  background: transparent !important;
+  border-bottom: none !important;
+  color: white;
+}
+
+.brand-header .ant-menu-item,
+.brand-header .ant-menu-item a {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+.brand-header .ant-menu-item-selected,
+.brand-header .ant-menu-item-selected a {
+  color: #FFD500 !important;
+}
+
+.brand-header .ant-menu-item:hover,
+.brand-header .ant-menu-item:hover a {
+  color: #FFD500 !important;
+}
+
+.brand-header .ant-menu-item::after {
+  border-bottom-color: #FFD500 !important;
+}
+
+/* Ranking top 3 */
+.rank-top {
+  background: linear-gradient(90deg, #008B46, #0033A0);
+  border-radius: 12px;
+}
+
+.rank-top .ant-list-item-meta-title,
+.rank-top .ant-list-item-meta-description {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .desktop-only { display: none !important; }
+  .mobile-only { display: flex !important; }
+}
+
+@media (min-width: 769px) {
+  .mobile-only { display: none !important; }
+  .desktop-only { display: flex !important; }
+}
+
+/* Bet input number center */
+.bet-input .ant-input-number-input {
+  text-align: center;
+  font-size: 28px;
+  font-weight: bold;
+  height: 64px;
+  line-height: 64px;
+}
+
+.bet-input.ant-input-number {
+  width: 72px;
+}
