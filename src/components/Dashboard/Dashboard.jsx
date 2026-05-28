@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Row, Col, Card, Button, Tag, Statistic, Typography, Spin, Empty, Alert, Space } from 'antd';
 import { TrophyOutlined, CalendarOutlined, ThunderboltOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { getAllPhases, getMatchesByPhase, getBetsByUser } from '../../services/gameService';
+import { getAllPhases, getMatchesByPhase, getBetsByUser, getPhaseCompletionStats } from '../../services/gameService';
 
 const { Title, Text } = Typography;
 
@@ -17,6 +17,7 @@ function Dashboard({ user }) {
   const [phases, setPhases] = useState([]);
   const [matchesData, setMatchesData] = useState({});
   const [userBets, setUserBets] = useState([]);
+  const [phaseStats, setPhaseStats] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { loadData(); }, [user]);
@@ -31,7 +32,11 @@ function Dashboard({ user }) {
         matches[phase.id] = await getMatchesByPhase(phase.id);
       }
       setMatchesData(matches);
-      if (!isAdmin) setUserBets(await getBetsByUser(user.uid));
+      if (isAdmin) {
+        setPhaseStats(await getPhaseCompletionStats());
+      } else {
+        setUserBets(await getBetsByUser(user.uid));
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -121,30 +126,37 @@ function Dashboard({ user }) {
                       </div>
                     </div>
 
-                    <Row gutter={16} style={{ marginBottom: 16 }}>
-                      <Col span={12}>
-                        <Statistic
-                          title="Jogos"
-                          value={matches.length}
-                          valueStyle={{ color: '#0033A0', fontSize: 28 }}
-                        />
-                      </Col>
-                      <Col span={12}>
-                        {isAdmin ? (
-                          <Statistic
-                            title="Encerrados"
-                            value={finished}
-                            valueStyle={{ color: '#008B46', fontSize: 28 }}
-                          />
-                        ) : (
-                          <Statistic
-                            title="Seus palpites"
-                            value={phaseBets.length}
-                            valueStyle={{ color: '#008B46', fontSize: 28 }}
-                          />
-                        )}
-                      </Col>
-                    </Row>
+                    {isAdmin ? (() => {
+                      const s = phaseStats[phase.id];
+                      const allDone = s && s.completed === s.totalUsers && s.totalUsers > 0;
+                      return (
+                        <Row gutter={16} style={{ marginBottom: 16 }}>
+                          <Col span={8}>
+                            <Statistic title="Jogos" value={matches.length} valueStyle={{ color: '#0033A0', fontSize: 24 }} />
+                          </Col>
+                          <Col span={8}>
+                            <Statistic title="Encerrados" value={finished} valueStyle={{ color: '#008B46', fontSize: 24 }} />
+                          </Col>
+                          <Col span={8}>
+                            <Statistic
+                              title="Completos"
+                              value={s ? s.completed : '—'}
+                              suffix={s ? `/${s.totalUsers}` : ''}
+                              valueStyle={{ color: allDone ? '#008B46' : '#d48806', fontSize: 24 }}
+                            />
+                          </Col>
+                        </Row>
+                      );
+                    })() : (
+                      <Row gutter={16} style={{ marginBottom: 16 }}>
+                        <Col span={12}>
+                          <Statistic title="Jogos" value={matches.length} valueStyle={{ color: '#0033A0', fontSize: 28 }} />
+                        </Col>
+                        <Col span={12}>
+                          <Statistic title="Seus palpites" value={phaseBets.length} valueStyle={{ color: '#008B46', fontSize: 28 }} />
+                        </Col>
+                      </Row>
+                    )}
 
                     {isAdmin ? (
                       <Button

@@ -20,8 +20,8 @@ function App() {
 
   useEffect(() => {
     if (window.location.hostname === 'localhost') {
-      setUser({ uid: 'dev', email: 'dev@localhost', displayName: 'Dev', role: 'user', totalPoints: 0 });
-      setUserIsAdmin(false);
+      setUser({ uid: 'dev', email: 'dev@localhost', displayName: 'Dev', role: 'admin', totalPoints: 0 });
+      setUserIsAdmin(true);
       setLoading(false);
       return;
     }

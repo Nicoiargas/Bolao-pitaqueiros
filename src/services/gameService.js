@@ -165,6 +165,33 @@ export async function deleteBet(betId) {
 
 // ── Ranking ──────────────────────────────────────────────────────────────────
 
+export async function getPhaseCompletionStats() {
+  const [{ data: matches, error: e1 }, { data: bets, error: e2 }, { data: users, error: e3 }] = await Promise.all([
+    supabase.from('matches').select('id, phase_id'),
+    supabase.from('bets').select('user_id, match_id'),
+    supabase.from('users').select('id').neq('role', 'admin'),
+  ]);
+  if (e1 || e2 || e3) return {};
+
+  const matchesByPhase = {};
+  matches.forEach(m => {
+    if (!matchesByPhase[m.phase_id]) matchesByPhase[m.phase_id] = [];
+    matchesByPhase[m.phase_id].push(m.id);
+  });
+
+  const betSet = new Set(bets.map(b => `${b.user_id}:${b.match_id}`));
+
+  const stats = {};
+  for (const [phaseId, matchIds] of Object.entries(matchesByPhase)) {
+    stats[phaseId] = {
+      total:      matchIds.length,
+      completed:  users.filter(u => matchIds.every(mId => betSet.has(`${u.id}:${mId}`))).length,
+      totalUsers: users.length,
+    };
+  }
+  return stats;
+}
+
 export async function getRanking() {
   const { data, error } = await supabase
     .from('users').select('*')

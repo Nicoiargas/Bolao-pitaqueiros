@@ -5,7 +5,7 @@ import {
 } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { createPhase, getAllPhases, updatePhase, deletePhase } from '../../services/gameService';
+import { createPhase, getAllPhases, updatePhase, deletePhase, getPhaseCompletionStats } from '../../services/gameService';
 import { PHASES } from '../../services/pointsService';
 
 const { Text } = Typography;
@@ -20,6 +20,7 @@ function PhaseManager() {
   const { message, modal } = App.useApp();
   const [form] = Form.useForm();
   const [phases, setPhases] = useState([]);
+  const [stats, setStats]   = useState({});
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPhase, setEditingPhase] = useState(null);
@@ -30,7 +31,9 @@ function PhaseManager() {
   const loadPhases = async () => {
     setLoading(true);
     try {
-      setPhases(await getAllPhases());
+      const [p, s] = await Promise.all([getAllPhases(), getPhaseCompletionStats()]);
+      setPhases(p);
+      setStats(s);
     } catch {
       message.error('Erro ao carregar fases');
     } finally {
@@ -129,6 +132,21 @@ function PhaseManager() {
           {isOpen(record.closingDate) ? 'Aberta' : 'Fechada'}
         </Tag>
       ),
+    },
+    {
+      title: 'Completos',
+      key: 'completed',
+      width: 130,
+      render: (_, record) => {
+        const s = stats[record.id];
+        if (!s) return <Text type="secondary">—</Text>;
+        const allDone = s.completed === s.totalUsers;
+        return (
+          <Tag color={allDone ? 'success' : s.completed > 0 ? 'processing' : 'default'}>
+            {s.completed}/{s.totalUsers} jogadores
+          </Tag>
+        );
+      },
     },
     {
       title: 'Ações',
