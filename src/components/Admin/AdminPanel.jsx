@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import PhaseManager from './PhaseManager';
 import MatchManager from './MatchManager';
+import GlobalBetManager from './GlobalBetManager';
 import {
   recalculateAllPoints, getRanking, getAllBets, getAllMatches, getAllPhases,
 } from '../../services/gameService';
@@ -152,6 +153,7 @@ function AdminPanel() {
   const tabItems = [
     { key: 'fases',  label: <Space><PlusOutlined />Fases</Space>,        children: <PhaseManager /> },
     { key: 'jogos',  label: <Space><EditOutlined />Jogos</Space>,        children: <MatchManager /> },
+    { key: 'global', label: <Space><TrophyOutlined />Palpite Global</Space>, children: <GlobalBetManager /> },
     { key: 'diag',   label: <Space><BugOutlined />Diagnóstico</Space>,   children: <DiagnosticPanel /> },
   ];
 

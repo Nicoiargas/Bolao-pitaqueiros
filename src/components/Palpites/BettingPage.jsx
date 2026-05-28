@@ -11,6 +11,7 @@ import {
 } from '../../services/gameService';
 import { calculatePoints } from '../../services/pointsService';
 import FlagImage from '../FlagImage';
+import GlobalBet from './GlobalBet';
 
 const { Title, Text } = Typography;
 
@@ -169,6 +170,7 @@ function BettingPage({ user }) {
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
+      <GlobalBet user={user} />
       {/* Header */}
       <Card
         style={{ marginBottom: 24, background: 'linear-gradient(90deg, #008B46, #0033A0)', border: 'none', borderRadius: 16 }}

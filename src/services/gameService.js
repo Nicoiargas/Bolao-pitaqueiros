@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getTotalPoints } from './pointsService';
+import { getAllGlobalBets, getGlobalResults, calcGlobalPoints } from './globalBetService';
 
 // ── Mappers ──────────────────────────────────────────────────────────────────
 
@@ -180,17 +181,21 @@ export async function updateUserPoints(userId, totalPoints) {
 // ── Recálculo de pontos ──────────────────────────────────────────────────────
 
 export async function recalculateAllPoints() {
-  const [allMatches, allPhases, allBets, { data: usersData, error }] = await Promise.all([
+  const [allMatches, allPhases, allBets, globalBets, globalResults, { data: usersData, error }] = await Promise.all([
     getAllMatches(),
     getAllPhases(),
     getAllBets(),
+    getAllGlobalBets(),
+    getGlobalResults(),
     supabase.from('users').select('*'),
   ]);
   if (error) throw error;
 
   await Promise.all(usersData.map(row => {
-    const userBets   = allBets.filter(b => b.userId === row.id);
-    const totalPoints = getTotalPoints(userBets, allMatches, allPhases);
-    return supabase.from('users').update({ total_points: totalPoints }).eq('id', row.id);
+    const userBets    = allBets.filter(b => b.userId === row.id);
+    const matchPts    = getTotalPoints(userBets, allMatches, allPhases);
+    const globalBet   = globalBets.find(b => b.user_id === row.id);
+    const globalPts   = calcGlobalPoints(globalBet, globalResults);
+    return supabase.from('users').update({ total_points: matchPts + globalPts }).eq('id', row.id);
   }));
 }
