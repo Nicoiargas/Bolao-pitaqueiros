@@ -128,14 +128,15 @@ export async function deleteMatch(matchId) {
 // ── Palpites ─────────────────────────────────────────────────────────────────
 
 export async function placeBet(userId, matchId, homeGoals, awayGoals, phaseId) {
-  const { error } = await supabase.from('bets').insert({
+  const { data, error } = await supabase.from('bets').insert({
     user_id:    userId,
     match_id:   matchId,
     phase_id:   phaseId,
     home_goals: homeGoals,
     away_goals: awayGoals,
-  });
+  }).select('id').single();
   if (error) throw error;
+  return data.id;
 }
 
 export async function getBetsByUser(userId) {
@@ -166,7 +167,9 @@ export async function deleteBet(betId) {
 
 export async function getRanking() {
   const { data, error } = await supabase
-    .from('users').select('*').order('total_points', { ascending: false });
+    .from('users').select('*')
+    .neq('role', 'admin')
+    .order('total_points', { ascending: false });
   if (error) throw error;
   return data.map(mapUser);
 }
@@ -186,7 +189,7 @@ export async function recalculateAllPoints() {
     getAllBets(),
     getAllGlobalBets(),
     getGlobalResults(),
-    supabase.from('users').select('*'),
+    supabase.from('users').select('*').neq('role', 'admin'),
   ]);
   if (error) throw error;
 

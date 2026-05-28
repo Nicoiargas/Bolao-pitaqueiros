@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, Tabs, Typography, Space, Button, Alert, List, Tag, Table, Collapse, Spin } from 'antd';
 import {
   PlusOutlined, EditOutlined, SettingOutlined,
-  ThunderboltOutlined, CheckCircleOutlined, BugOutlined, ReloadOutlined,
+  ThunderboltOutlined, CheckCircleOutlined, BugOutlined, ReloadOutlined, TrophyOutlined,
 } from '@ant-design/icons';
 import PhaseManager from './PhaseManager';
 import MatchManager from './MatchManager';
