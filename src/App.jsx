@@ -19,6 +19,14 @@ function App() {
   const [showReset, setShowReset]     = useState(false);
 
   useEffect(() => {
+    // Detecta recovery direto na URL (antes de qualquer listener)
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    if (params.get('type') === 'recovery' && params.get('access_token')) {
+      setShowReset(true);
+      setLoading(false);
+      return;
+    }
+
     const fallback = setTimeout(() => setLoading(false), 6000);
 
     const unsubscribe = onAuthChange(async (currentUser, isRecovery) => {

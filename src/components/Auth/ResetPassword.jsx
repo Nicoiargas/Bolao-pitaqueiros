@@ -10,6 +10,15 @@ function ResetPassword({ onDone }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.hash.substring(1));
+    const accessToken  = params.get('access_token');
+    const refreshToken = params.get('refresh_token') || '';
+    if (accessToken) {
+      supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken }).catch(() => {});
+    }
+  }, []);
+
   const onFinish = async ({ password }) => {
     setError('');
     setLoading(true);
