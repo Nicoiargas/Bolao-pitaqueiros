@@ -151,6 +151,13 @@ export async function seedWorldCup2026() {
   const { data: cfg } = await supabase.from('config').select('value').eq('key', 'seedVersion').single();
   if (cfg?.value === SEED_VERSION) return;
 
+  // Grava o lock antes de qualquer insert para evitar seed duplo por race condition
+  await supabase.from('config').upsert({ key: 'seedVersion', value: SEED_VERSION });
+
+  // Segunda verificação: se já existem fases, outra instância chegou primeiro
+  const { count } = await supabase.from('phases').select('*', { count: 'exact', head: true });
+  if (count > 0) return;
+
   // Limpa dados existentes (ordem importa por FK)
   await supabase.from('bets').delete().gt('timestamp', '1970-01-01');
   await supabase.from('matches').delete().gt('created_at', '1970-01-01');
