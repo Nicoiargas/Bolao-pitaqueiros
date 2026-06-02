@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Tabs, Button, InputNumber, Select, Space, Tag, Typography,
   App, Empty, Spin, Row, Col, Segmented, Card, Collapse,
@@ -260,10 +260,14 @@ function MatchManager() {
   const [activeKnockout, setActiveKnockout] = useState('Round of 32');
   const [autoFilling, setAutoFilling]       = useState(false);
 
-  useEffect(() => { loadAll(); }, []);
+  // Refs para acessar estado atual dentro de useCallback sem stale closure
+  const resultsRef   = useRef(results);
+  const teamEditsRef = useRef(teamEdits);
+  useEffect(() => { resultsRef.current   = results;   }, [results]);
+  useEffect(() => { teamEditsRef.current = teamEdits; }, [teamEdits]);
 
-  const loadAll = async () => {
-    setLoading(true);
+  // silentRefresh: atualiza dados sem setar loading — preserva scroll e foco
+  const silentRefresh = useCallback(async () => {
     try {
       const [allPhases, allMatches] = await Promise.all([getAllPhases(), getAllMatches()]);
       setPhases(allPhases);
@@ -271,15 +275,20 @@ function MatchManager() {
       allPhases.forEach(p => { byPhase[p.id] = []; });
       allMatches.forEach(m => { if (byPhase[m.phaseId]) byPhase[m.phaseId].push(m); });
       setMatchesByPhase(byPhase);
-      const initial = {};
-      allMatches.forEach(m => { initial[m.id] = { home: m.homeGoals ?? 0, away: m.awayGoals ?? 0 }; });
-      setResults(initial);
-    } catch {
-      message.error('Erro ao carregar dados');
-    } finally {
-      setLoading(false);
-    }
-  };
+      const updated = {};
+      allMatches.forEach(m => { updated[m.id] = { home: m.homeGoals ?? 0, away: m.awayGoals ?? 0 }; });
+      setResults(updated);
+    } catch { message.error('Erro ao recarregar dados'); }
+  }, []); // eslint-disable-line
+
+  const silentRefreshRef = useRef(silentRefresh);
+  useEffect(() => { silentRefreshRef.current = silentRefresh; }, [silentRefresh]);
+
+  useEffect(() => {
+    // Carga inicial com spinner
+    setLoading(true);
+    silentRefresh().finally(() => setLoading(false));
+  }, []); // eslint-disable-line
 
   // ── Handlers estáveis com useCallback ─────────────────────────────────────
   const onSetResult = useCallback((matchId, field, val) =>
@@ -294,53 +303,38 @@ function MatchManager() {
     setTeamEdits(prev => ({ ...prev, [matchId]: { ...prev[matchId], [field]: val } })), []);
 
   const onSave = useCallback(async (matchId) => {
-    setResults(prev => {
-      const r = prev[matchId];
-      if (r?.home == null || r?.away == null) { message.warning('Preencha ambos os placares'); return prev; }
-      (async () => {
-        try {
-          await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
-          await recalculateAllPoints();
-          message.success('Resultado salvo e pontuação atualizada!');
-          loadAll();
-        } catch { message.error('Erro ao salvar resultado'); }
-      })();
-      return prev;
-    });
-  }, []); // eslint-disable-line
+    const r = resultsRef.current[matchId];
+    if (!r || r.home == null || r.away == null) { message.warning('Preencha ambos os placares'); return; }
+    try {
+      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
+      await recalculateAllPoints();
+      message.success('Resultado salvo e pontuação atualizada!');
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao salvar resultado'); }
+  }, []);
 
   const onSaveAndClose = useCallback(async (matchId) => {
-    setResults(prev => {
-      const r = prev[matchId];
-      if (r?.home == null || r?.away == null) { message.warning('Preencha ambos os placares'); return prev; }
-      (async () => {
-        try {
-          await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
-          await recalculateAllPoints();
-          message.success('Resultado salvo e pontuação atualizada!');
-          onCancelResultEdit(matchId);
-          loadAll();
-        } catch { message.error('Erro ao salvar resultado'); }
-      })();
-      return prev;
-    });
-  }, [onCancelResultEdit]); // eslint-disable-line
+    const r = resultsRef.current[matchId];
+    if (!r || r.home == null || r.away == null) { message.warning('Preencha ambos os placares'); return; }
+    try {
+      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
+      await recalculateAllPoints();
+      message.success('Resultado salvo e pontuação atualizada!');
+      onCancelResultEdit(matchId);
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao salvar resultado'); }
+  }, [onCancelResultEdit]);
 
   const onSaveTeams = useCallback(async (matchId) => {
-    setTeamEdits(prev => {
-      const t = prev[matchId];
-      if (!t?.home?.trim() || !t?.away?.trim()) { message.warning('Selecione os dois times'); return prev; }
-      (async () => {
-        try {
-          await updateMatchTeams(matchId, t.home.trim(), t.away.trim());
-          message.success('Times atualizados!');
-          onCancelTeamEdit(matchId);
-          loadAll();
-        } catch { message.error('Erro ao atualizar times'); }
-      })();
-      return prev;
-    });
-  }, [onCancelTeamEdit]); // eslint-disable-line
+    const t = teamEditsRef.current[matchId];
+    if (!t?.home?.trim() || !t?.away?.trim()) { message.warning('Selecione os dois times'); return; }
+    try {
+      await updateMatchTeams(matchId, t.home.trim(), t.away.trim());
+      message.success('Times atualizados!');
+      onCancelTeamEdit(matchId);
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao atualizar times'); }
+  }, [onCancelTeamEdit]);
 
   // ── Dados derivados ────────────────────────────────────────────────────────
   const gruposPhase   = phases.find(p => p.name === 'Grupos');
@@ -481,7 +475,7 @@ function MatchManager() {
     try {
       await Promise.all(updates.map(({ m, home, away }) => updateMatchTeams(m.id, home, away)));
       message.success(`${updates.length} jogos preenchidos!`);
-      loadAll();
+      silentRefreshRef.current();
     } catch { message.error('Erro ao preencher times'); }
     finally  { setAutoFilling(false); }
   };
