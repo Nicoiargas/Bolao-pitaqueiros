@@ -13,6 +13,56 @@ import { calculatePoints } from '../../services/pointsService';
 import FlagImage from '../FlagImage';
 import GlobalBet from './GlobalBet';
 
+const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L'];
+
+function computeGroupStandings(matches) {
+  const ts = {};
+  matches.filter(m => m.status === 'finished' && m.group).forEach(m => {
+    [m.homeTeam, m.awayTeam].forEach(t => {
+      if (!ts[t]) ts[t] = { team: t, group: m.group, pts: 0, gf: 0, ga: 0 };
+    });
+    const hg = m.homeGoals ?? 0, ag = m.awayGoals ?? 0;
+    ts[m.homeTeam].gf += hg; ts[m.homeTeam].ga += ag;
+    ts[m.awayTeam].gf += ag; ts[m.awayTeam].ga += hg;
+    if (hg > ag)      ts[m.homeTeam].pts += 3;
+    else if (hg < ag) ts[m.awayTeam].pts += 3;
+    else { ts[m.homeTeam].pts += 1; ts[m.awayTeam].pts += 1; }
+  });
+  const byGroup = {};
+  Object.values(ts).forEach(t => {
+    if (!byGroup[t.group]) byGroup[t.group] = [];
+    byGroup[t.group].push(t);
+  });
+  Object.keys(byGroup).forEach(g => {
+    byGroup[g].sort((a, b) => {
+      if (b.pts !== a.pts) return b.pts - a.pts;
+      const gdA = a.gf - a.ga, gdB = b.gf - b.ga;
+      if (gdB !== gdA) return gdB - gdA;
+      return b.gf - a.gf;
+    });
+  });
+  return byGroup;
+}
+
+function buildPositionLabels(standings) {
+  const thirds = [];
+  const labels = {};
+  GROUPS.forEach(g => {
+    const group = standings[g] || [];
+    if (group[0]) labels[group[0].team] = { text: `1º Grupo ${g}`, color: 'blue' };
+    if (group[1]) labels[group[1].team] = { text: `2º Grupo ${g}`, color: 'green' };
+    if (group[2]) thirds.push({ ...group[2], groupLetter: g });
+  });
+  thirds.sort((a, b) => {
+    if (b.pts !== a.pts) return b.pts - a.pts;
+    const gdA = a.gf - a.ga, gdB = b.gf - b.ga;
+    if (gdB !== gdA) return gdB - gdA;
+    return b.gf - a.gf;
+  });
+  thirds.slice(0, 8).forEach(t => { labels[t.team] = { text: `3º Grupo ${t.groupLetter}`, color: 'gold' }; });
+  return labels;
+}
+
 const { Title, Text } = Typography;
 
 const toDate = (val) => {
@@ -31,9 +81,11 @@ function BettingPage({ user }) {
   const [loading, setLoading]             = useState(true);
   const [savingAll, setSavingAll]         = useState(false);
   const [groupFilter, setGroupFilter]     = useState('Todos');
+  const [positionLabels, setPositionLabels] = useState({});
 
   useEffect(() => { loadPhases(); }, [user]);
   useEffect(() => { if (selectedPhaseId) loadMatches(selectedPhaseId); }, [selectedPhaseId]);
+  useEffect(() => { if (phases.length > 0) loadPositionLabels(phases); }, [phases]);
 
   const isPhaseOpen = (closingDate) => new Date() < toDate(closingDate);
 
@@ -49,6 +101,16 @@ function BettingPage({ user }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadPositionLabels = async (allPhases) => {
+    const gruposPhase = allPhases.find(p => p.name === 'Grupos');
+    if (!gruposPhase) return;
+    try {
+      const groupMatches = await getMatchesByPhase(gruposPhase.id);
+      const standings = computeGroupStandings(groupMatches);
+      setPositionLabels(buildPositionLabels(standings));
+    } catch { /* falha silenciosa — labels são informação complementar */ }
   };
 
   const loadMatches = async (phaseId) => {
@@ -295,13 +357,29 @@ function BettingPage({ user }) {
                         {dirty && <Tag color="warning" style={{ fontSize: 11 }}>Não salvo</Tag>}
                       </Space>
                       <div style={{ marginTop: 4 }}>
-                        <Text strong style={{ fontSize: 15, color: '#0033A0', display: 'block' }}>
-                          <FlagImage name={match.homeTeam} height={16} />{match.homeTeam}
-                        </Text>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
+                            <FlagImage name={match.homeTeam} height={16} />{match.homeTeam}
+                          </Text>
+                          {!match.group && positionLabels[match.homeTeam] && (
+                            <Tag color={positionLabels[match.homeTeam].color}
+                              style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
+                              {positionLabels[match.homeTeam].text}
+                            </Tag>
+                          )}
+                        </div>
                         <Text type="secondary" style={{ fontSize: 12 }}>vs</Text>
-                        <Text strong style={{ fontSize: 15, color: '#0033A0', display: 'block' }}>
-                          <FlagImage name={match.awayTeam} height={16} />{match.awayTeam}
-                        </Text>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
+                            <FlagImage name={match.awayTeam} height={16} />{match.awayTeam}
+                          </Text>
+                          {!match.group && positionLabels[match.awayTeam] && (
+                            <Tag color={positionLabels[match.awayTeam].color}
+                              style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
+                              {positionLabels[match.awayTeam].text}
+                            </Tag>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </Col>
