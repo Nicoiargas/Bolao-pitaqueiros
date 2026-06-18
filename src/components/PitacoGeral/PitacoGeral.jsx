@@ -45,7 +45,7 @@ function PitacoGeral() {
       const sorted = [...allPhases].sort((a, b) => {
         const ia = PHASE_ORDER.indexOf(a.name);
         const ib = PHASE_ORDER.indexOf(b.name);
-        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        return (ib === -1 ? 99 : ib) - (ia === -1 ? 99 : ia);
       });
       setPhases(sorted);
 
@@ -64,7 +64,7 @@ function PitacoGeral() {
       if (!map[m.phaseId]) map[m.phaseId] = [];
       map[m.phaseId].push(m);
     });
-    Object.values(map).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
+    Object.values(map).forEach(arr => arr.sort((a, b) => new Date(b.date) - new Date(a.date)));
     return map;
   }, [matches]);
 
