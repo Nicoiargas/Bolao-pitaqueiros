@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Layout, Menu, Button, Drawer, Space, Avatar, Typography } from 'antd';
 import {
   TrophyOutlined, DashboardOutlined, BarChartOutlined,
-  SettingOutlined, LogoutOutlined, MenuOutlined,
+  SettingOutlined, LogoutOutlined, MenuOutlined, UnorderedListOutlined,
 } from '@ant-design/icons';
 import { logoutUser } from '../../services/authService';
 
@@ -16,11 +16,12 @@ function Navigation({ user, isAdmin }) {
 
   const handleLogout = async () => {
     await logoutUser();
-    navigate('/login');
+    window.location.href = '/login';
   };
 
   const currentKey = location.pathname.startsWith('/admin') ? '/admin'
     : location.pathname.startsWith('/palpites') ? '/palpites'
+    : location.pathname.startsWith('/pitaco-geral') ? '/pitaco-geral'
     : location.pathname.startsWith('/ranking') ? '/ranking'
     : '/dashboard';
 
@@ -39,6 +40,11 @@ function Navigation({ user, isAdmin }) {
       key: '/ranking',
       icon: <BarChartOutlined />,
       label: <Link to="/ranking">Ranking</Link>,
+    },
+    {
+      key: '/pitaco-geral',
+      icon: <UnorderedListOutlined />,
+      label: <Link to="/pitaco-geral">Pitaco Geral</Link>,
     },
     ...(isAdmin ? [{
       key: '/admin',

@@ -9,6 +9,7 @@ import ResetPassword from './components/Auth/ResetPassword';
 import Dashboard from './components/Dashboard/Dashboard';
 import BettingPage from './components/Palpites/BettingPage';
 import Ranking from './components/Ranking/Ranking';
+import PitacoGeral from './components/PitacoGeral/PitacoGeral';
 import AdminPanel from './components/Admin/AdminPanel';
 import './styles/global.css';
 
@@ -20,8 +21,8 @@ function App() {
 
   useEffect(() => {
     if (window.location.hostname === 'localhost') {
-      setUser({ uid: 'dev', email: 'dev@localhost', displayName: 'Dev', role: 'admin', totalPoints: 0 });
-      setUserIsAdmin(true);
+      setUser({ uid: '00000000-0000-0000-0000-000000000000', email: 'dev@localhost', displayName: 'Dev', role: 'user', totalPoints: 0 });
+      setUserIsAdmin(false);
       setLoading(false);
       return;
     }
@@ -87,7 +88,8 @@ function App() {
           <Routes>
             <Route path="/dashboard" element={<Dashboard user={user} />} />
             <Route path="/palpites"  element={userIsAdmin ? <Navigate to="/dashboard" /> : <BettingPage user={user} />} />
-            <Route path="/ranking"   element={<Ranking />} />
+            <Route path="/ranking"       element={<Ranking />} />
+            <Route path="/pitaco-geral" element={<PitacoGeral />} />
             <Route path="/admin/*"   element={userIsAdmin ? <AdminPanel /> : <Navigate to="/dashboard" />} />
             <Route path="*"          element={<Navigate to="/dashboard" />} />
           </Routes>
