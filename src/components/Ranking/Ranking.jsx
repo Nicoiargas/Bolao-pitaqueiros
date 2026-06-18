@@ -57,7 +57,8 @@ function Ranking() {
         <List
           dataSource={ranking}
           renderItem={(rankUser, index) => {
-            const position = index + 1;
+            // Posição real: conta quantos têm pontuação MAIOR que este
+            const position = ranking.filter(u => (u.totalPoints || 0) > (rankUser.totalPoints || 0)).length + 1;
             const isTop3 = position <= 3;
             const medal = MEDAL[position];
 
