@@ -548,7 +548,7 @@ function BettingPage({ user }) {
               const isScrollTarget = isToday && !firstTodayFound;
               if (isScrollTarget) firstTodayFound = true;
               return (
-                <div key={match.id} ref={isScrollTarget ? scrollRef : null}>
+                <div key={match.id} ref={isScrollTarget ? scrollRef : null} style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}>
                   {renderMatchCard(match)}
                 </div>
               );
