@@ -89,13 +89,29 @@ function BettingPage({ user }) {
 
   const isPhaseOpen = (closingDate) => new Date() < toDate(closingDate);
 
+  const isMatchOpen = (match, phase) => {
+    if (!phase) return false;
+    return new Date() < toDate(phase.closingDate);
+  };
+
+  const isPhaseAnyOpen = (p) => isPhaseOpen(p.closingDate);
+
   const loadPhases = async () => {
     try {
       setLoading(true);
       const data = await getAllPhases();
-      setPhases(data);
-      const open = data.find(p => isPhaseOpen(p.closingDate));
-      setSelectedPhaseId(open?.id || data[0]?.id || null);
+      const sorted = [...data].sort((a, b) => new Date(toDate(a.closingDate)) - new Date(toDate(b.closingDate)));
+      setPhases(sorted);
+      // Fase vigente: a primeira ainda aberta (menor closingDate futuro),
+      // ou a última fechada caso o torneio já tenha encerrado
+      // Última fase fechada = fase de referência vigente
+      // Se nenhuma fechou ainda (torneio recém-começou), usa a primeira aberta
+      const now = new Date();
+      const closed = sorted.filter(p => toDate(p.closingDate) <= now);
+      const lastClosed = closed[closed.length - 1];
+      const firstOpen = sorted.find(p => isPhaseAnyOpen(p));
+      const vigent = lastClosed ?? firstOpen ?? sorted[sorted.length - 1];
+      setSelectedPhaseId(vigent?.id ?? null);
     } catch {
       message.error('Erro ao carregar fases');
     } finally {
@@ -125,8 +141,8 @@ function BettingPage({ user }) {
       matchData.forEach(m => {
         const existing = userBets.find(b => b.matchId === m.id);
         betsMap[m.id] = existing
-          ? { home: existing.homeGoals, away: existing.awayGoals, id: existing.id }
-          : { home: null, away: null, id: null };
+          ? { home: existing.homeGoals, away: existing.awayGoals, id: existing.id, penaltyWinner: existing.penaltyWinner ?? null }
+          : { home: null, away: null, id: null, penaltyWinner: null };
       });
       setBets(betsMap);
       setInitialBets(betsMap);
@@ -141,13 +157,13 @@ function BettingPage({ user }) {
     const cur = bets[matchId];
     const ini = initialBets[matchId];
     if (!cur || !ini) return false;
-    return cur.home !== ini.home || cur.away !== ini.away;
+    return cur.home !== ini.home || cur.away !== ini.away || cur.penaltyWinner !== ini.penaltyWinner;
   }, [bets, initialBets]);
 
   const dirtyCount = matches.filter(m => isDirty(m.id) && bets[m.id]?.home !== null && bets[m.id]?.away !== null).length;
 
   const handleSaveAll = async () => {
-    const toSave = matches.filter(m => isDirty(m.id));
+    const toSave = matches.filter(m => isDirty(m.id) && isMatchOpen(m, currentPhase));
     const incomplete = toSave.filter(m => bets[m.id]?.home === null || bets[m.id]?.away === null);
     const complete   = toSave.filter(m => bets[m.id]?.home !== null && bets[m.id]?.away !== null);
 
@@ -162,9 +178,9 @@ function BettingPage({ user }) {
       for (const match of complete) {
         const bet = bets[match.id];
         if (bet.id) {
-          await updateBet(bet.id, bet.home, bet.away);
+          await updateBet(bet.id, bet.home, bet.away, bet.penaltyWinner ?? null);
         } else {
-          const newId = await placeBet(user.uid, match.id, bet.home, bet.away, selectedPhaseId);
+          const newId = await placeBet(user.uid, match.id, bet.home, bet.away, selectedPhaseId, bet.penaltyWinner ?? null);
           updatedBets[match.id] = { ...bet, id: newId };
         }
       }
@@ -183,7 +199,15 @@ function BettingPage({ user }) {
   };
 
   const handleChange = (matchId, field, val) => {
-    setBets(prev => ({ ...prev, [matchId]: { ...prev[matchId], [field]: val } }));
+    setBets(prev => {
+      const updated = { ...prev[matchId], [field]: val };
+      if (field === 'home' || field === 'away') {
+        const newHome = field === 'home' ? val : updated.home;
+        const newAway = field === 'away' ? val : updated.away;
+        if (newHome === null || newAway === null || newHome !== newAway) updated.penaltyWinner = null;
+      }
+      return { ...prev, [matchId]: updated };
+    });
   };
 
   if (loading && phases.length === 0) {
@@ -194,34 +218,45 @@ function BettingPage({ user }) {
     );
   }
 
-  const unsentCount = matches.filter(m => !initialBets[m.id]?.id).length;
-
   const availableGroups = [...new Set(matches.map(m => m.group).filter(Boolean))].sort();
   const filteredMatches = groupFilter === 'Todos'
     ? matches
     : matches.filter(m => m.group === groupFilter);
 
   const currentPhase = phases.find(p => p.id === selectedPhaseId);
-  const phaseOpen = currentPhase && isPhaseOpen(currentPhase.closingDate);
+
+  const unsentCount = matches.filter(m => !initialBets[m.id]?.id && isMatchOpen(m, currentPhase)).length;
+
+  // Para Grupos: aberta se algum jogo visível ainda aceita palpites
+  const phaseOpen = currentPhase && (
+    currentPhase.name === 'Grupos'
+      ? filteredMatches.some(m => m.status !== 'finished' && isMatchOpen(m, currentPhase))
+      : isPhaseOpen(currentPhase.closingDate)
+  );
+
+  // dirtyCount considera apenas jogos com rodada ainda aberta
+  const openDirtyCount = filteredMatches.filter(m =>
+    isDirty(m.id) && bets[m.id]?.home !== null && bets[m.id]?.away !== null && isMatchOpen(m, currentPhase)
+  ).length;
 
   const segmentedOptions = phases.map(p => ({
     label: (
       <Space size={4}>
         {p.name}
-        {!isPhaseOpen(p.closingDate) && <LockOutlined style={{ fontSize: 11 }} />}
+        {!isPhaseAnyOpen(p) && <LockOutlined style={{ fontSize: 11 }} />}
       </Space>
     ),
     value: p.id,
   }));
 
   const SaveAllButton = () => (
-    <Badge count={dirtyCount} offset={[-4, 4]}>
+    <Badge count={openDirtyCount} offset={[-4, 4]}>
       <Button
         type="primary"
         icon={<SaveOutlined />}
         size="large"
         loading={savingAll}
-        disabled={!phaseOpen || dirtyCount === 0}
+        disabled={!phaseOpen || openDirtyCount === 0}
         onClick={handleSaveAll}
         style={{ fontWeight: 700, minWidth: 180 }}
       >
@@ -229,6 +264,167 @@ function BettingPage({ user }) {
       </Button>
     </Badge>
   );
+
+  const renderMatchCard = (match) => {
+    const bet     = bets[match.id] || { home: null, away: null, id: null };
+    const finished = match.status === 'finished';
+    const canBet  = !finished && isMatchOpen(match, currentPhase);
+    const dirty   = isDirty(match.id);
+    return (
+      <Card
+        key={match.id}
+        style={{
+          borderRadius: 12,
+          borderColor: dirty ? '#faad14' : undefined,
+          borderWidth: dirty ? 2 : undefined,
+        }}
+        styles={{ body: { padding: '16px 20px' } }}
+      >
+        <Row align="middle" gutter={[16, 12]}>
+          <Col xs={24} md={8}>
+            <div>
+              <Space size={6}>
+                {match.group && <Tag color="blue" style={{ fontSize: 11 }}>Grupo {match.group}</Tag>}
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {dayjs(toDate(match.date)).format('DD/MM · HH:mm')}
+                </Text>
+                {dirty && <Tag color="warning" style={{ fontSize: 11 }}>Não salvo</Tag>}
+              </Space>
+              <div style={{ marginTop: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
+                    <FlagImage name={match.homeTeam} height={16} />{match.homeTeam}
+                  </Text>
+                  {!match.group && positionLabels[match.homeTeam] && (
+                    <Tag color={positionLabels[match.homeTeam].color}
+                      style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
+                      {positionLabels[match.homeTeam].text}
+                    </Tag>
+                  )}
+                </div>
+                <Text type="secondary" style={{ fontSize: 12 }}>vs</Text>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
+                    <FlagImage name={match.awayTeam} height={16} />{match.awayTeam}
+                  </Text>
+                  {!match.group && positionLabels[match.awayTeam] && (
+                    <Tag color={positionLabels[match.awayTeam].color}
+                      style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
+                      {positionLabels[match.awayTeam].text}
+                    </Tag>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Col>
+
+          <Col xs={24} md={10}>
+            <Space align="center" style={{ justifyContent: 'center', width: '100%' }}>
+              <InputNumber
+                className="bet-input"
+                min={0} max={99}
+                value={bet.home}
+                onChange={(val) => handleChange(match.id, 'home', val)}
+                disabled={!canBet}
+                controls={false}
+                placeholder="0"
+                style={{ width: 72, textAlign: 'center' }}
+              />
+              <Text strong style={{ fontSize: 22, color: '#008B46' }}>×</Text>
+              <InputNumber
+                className="bet-input"
+                min={0} max={99}
+                value={bet.away}
+                onChange={(val) => handleChange(match.id, 'away', val)}
+                disabled={!canBet}
+                controls={false}
+                placeholder="0"
+                style={{ width: 72, textAlign: 'center' }}
+              />
+            </Space>
+
+            {!match.group && canBet && bet.home !== null && bet.away !== null && bet.home === bet.away && (
+              <div style={{ textAlign: 'center', marginTop: 10 }}>
+                <Text style={{ fontSize: 12, color: '#666', display: 'block', marginBottom: 6 }}>
+                  🥅 Vencedor nos pênaltis (bônus ×2):
+                </Text>
+                <Space>
+                  <Button
+                    size="small"
+                    type={bet.penaltyWinner === match.homeTeam ? 'primary' : 'default'}
+                    style={bet.penaltyWinner === match.homeTeam ? { background: '#008B46', borderColor: '#008B46' } : {}}
+                    onClick={() => handleChange(match.id, 'penaltyWinner',
+                      bet.penaltyWinner === match.homeTeam ? null : match.homeTeam)}
+                  >
+                    {match.homeTeam}
+                  </Button>
+                  <Button
+                    size="small"
+                    type={bet.penaltyWinner === match.awayTeam ? 'primary' : 'default'}
+                    style={bet.penaltyWinner === match.awayTeam ? { background: '#008B46', borderColor: '#008B46' } : {}}
+                    onClick={() => handleChange(match.id, 'penaltyWinner',
+                      bet.penaltyWinner === match.awayTeam ? null : match.awayTeam)}
+                  >
+                    {match.awayTeam}
+                  </Button>
+                </Space>
+              </div>
+            )}
+
+            {finished && (() => {
+              const basePoints  = currentPhase?.pointsPerGame ?? 0;
+              const hasBet      = bet.home !== null && bet.away !== null;
+              const betHome     = hasBet ? bet.home : 0;
+              const betAway     = hasBet ? bet.away : 0;
+              const pts         = calculatePoints(
+                { homeGoals: betHome, awayGoals: betAway, penaltyWinner: bet.penaltyWinner ?? null },
+                { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null },
+                basePoints
+              );
+              const isExact   = betHome === match.homeGoals && betAway === match.awayGoals;
+              const isCorrect = pts > 0 && !isExact;
+              const hasPenaltyBonus = isExact && betHome === betAway &&
+                bet.penaltyWinner && match.penaltyWinner &&
+                bet.penaltyWinner === match.penaltyWinner;
+              return (
+                <div style={{ textAlign: 'center', marginTop: 8 }}>
+                  <Space size={4} wrap style={{ justifyContent: 'center' }}>
+                    <Tag color="blue">
+                      Resultado: {match.homeGoals} × {match.awayGoals}
+                      {match.penaltyWinner && ` (pen. ${match.penaltyWinner})`}
+                    </Tag>
+                    <Tag color={isExact ? 'gold' : isCorrect ? 'success' : 'default'}>
+                      {hasBet ? 'Seu palpite' : 'Assumido'}: {betHome} × {betAway}
+                      {bet.penaltyWinner && ` (pen. ${bet.penaltyWinner})`}
+                    </Tag>
+                    <Tag color={pts === 0 ? 'default' : 'green'} style={{ fontWeight: 700 }}>
+                      {pts === 0 ? '0 pts' : isExact ? `+${pts} pts ${hasPenaltyBonus ? '🎯🥅' : '🎯'}` : `+${pts} pt${pts !== 1 ? 's' : ''}`}
+                    </Tag>
+                  </Space>
+                </div>
+              );
+            })()}
+          </Col>
+
+          <Col xs={24} md={6} style={{ textAlign: 'right' }}>
+            {finished ? (
+              <Tag icon={<LockOutlined />} color="default">Encerrado</Tag>
+            ) : !isMatchOpen(match, currentPhase) ? (
+              <Tag icon={<LockOutlined />} color="warning">Fase fechada</Tag>
+            ) : bet.id ? (
+              <Button
+                icon={<EditOutlined />}
+                size="small"
+                onClick={() => handleEdit(match.id)}
+              >
+                Editar
+              </Button>
+            ) : null}
+          </Col>
+        </Row>
+      </Card>
+    );
+  };
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto', padding: '24px 16px' }}>
@@ -329,142 +525,10 @@ function BettingPage({ user }) {
         <Empty description="Nenhum jogo nesta fase" />
       ) : (
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          {filteredMatches.map((match) => {
-            const bet     = bets[match.id] || { home: null, away: null, id: null };
-            const finished = match.status === 'finished';
-            const canBet  = !finished && phaseOpen;
-            const dirty   = isDirty(match.id);
-
-            return (
-              <Card
-                key={match.id}
-                style={{
-                  borderRadius: 12,
-                  borderColor: dirty ? '#faad14' : undefined,
-                  borderWidth: dirty ? 2 : undefined,
-                }}
-                styles={{ body: { padding: '16px 20px' } }}
-              >
-                <Row align="middle" gutter={[16, 12]}>
-                  {/* Match info */}
-                  <Col xs={24} md={8}>
-                    <div>
-                      <Space size={6}>
-                        {match.group && <Tag color="blue" style={{ fontSize: 11 }}>Grupo {match.group}</Tag>}
-                        <Text type="secondary" style={{ fontSize: 12 }}>
-                          {dayjs(toDate(match.date)).format('DD/MM · HH:mm')}
-                        </Text>
-                        {dirty && <Tag color="warning" style={{ fontSize: 11 }}>Não salvo</Tag>}
-                      </Space>
-                      <div style={{ marginTop: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
-                            <FlagImage name={match.homeTeam} height={16} />{match.homeTeam}
-                          </Text>
-                          {!match.group && positionLabels[match.homeTeam] && (
-                            <Tag color={positionLabels[match.homeTeam].color}
-                              style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
-                              {positionLabels[match.homeTeam].text}
-                            </Tag>
-                          )}
-                        </div>
-                        <Text type="secondary" style={{ fontSize: 12 }}>vs</Text>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                          <Text strong style={{ fontSize: 15, color: '#0033A0' }}>
-                            <FlagImage name={match.awayTeam} height={16} />{match.awayTeam}
-                          </Text>
-                          {!match.group && positionLabels[match.awayTeam] && (
-                            <Tag color={positionLabels[match.awayTeam].color}
-                              style={{ fontSize: 10, margin: 0, padding: '0 5px', lineHeight: '18px' }}>
-                              {positionLabels[match.awayTeam].text}
-                            </Tag>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </Col>
-
-                  {/* Bet inputs */}
-                  <Col xs={24} md={10}>
-                    <Space align="center" style={{ justifyContent: 'center', width: '100%' }}>
-                      <InputNumber
-                        className="bet-input"
-                        min={0} max={99}
-                        value={bet.home}
-                        onChange={(val) => handleChange(match.id, 'home', val)}
-                        disabled={!canBet}
-                        controls={false}
-                        placeholder="0"
-                        style={{ width: 72, textAlign: 'center' }}
-                      />
-                      <Text strong style={{ fontSize: 22, color: '#008B46' }}>×</Text>
-                      <InputNumber
-                        className="bet-input"
-                        min={0} max={99}
-                        value={bet.away}
-                        onChange={(val) => handleChange(match.id, 'away', val)}
-                        disabled={!canBet}
-                        controls={false}
-                        placeholder="0"
-                        style={{ width: 72, textAlign: 'center' }}
-                      />
-                    </Space>
-
-                    {finished && (() => {
-                      const basePoints  = currentPhase?.pointsPerGame ?? 0;
-                      const hasBet      = bet.home !== null && bet.away !== null;
-                      const betHome     = hasBet ? bet.home  : 0;
-                      const betAway     = hasBet ? bet.away  : 0;
-                      const pts         = calculatePoints(
-                        { homeGoals: betHome,         awayGoals: betAway         },
-                        { homeGoals: match.homeGoals, awayGoals: match.awayGoals },
-                        basePoints
-                      );
-                      const isExact   = betHome === match.homeGoals && betAway === match.awayGoals;
-                      const isCorrect = pts > 0 && !isExact;
-
-                      return (
-                        <div style={{ textAlign: 'center', marginTop: 8 }}>
-                          <Space size={4} wrap style={{ justifyContent: 'center' }}>
-                            <Tag color="blue">
-                              Resultado: {match.homeGoals} × {match.awayGoals}
-                            </Tag>
-                            <Tag color={isExact ? 'gold' : isCorrect ? 'success' : 'default'}>
-                              {hasBet ? 'Seu palpite' : 'Assumido'}: {betHome} × {betAway}
-                            </Tag>
-                            <Tag color={pts === 0 ? 'default' : 'green'} style={{ fontWeight: 700 }}>
-                              {pts === 0 ? '0 pts' : isExact ? `+${pts} pts 🎯` : `+${pts} pt${pts !== 1 ? 's' : ''}`}
-                            </Tag>
-                          </Space>
-                        </div>
-                      );
-                    })()}
-                  </Col>
-
-                  {/* Status / delete */}
-                  <Col xs={24} md={6} style={{ textAlign: 'right' }}>
-                    {finished ? (
-                      <Tag icon={<LockOutlined />} color="default">Encerrado</Tag>
-                    ) : !phaseOpen ? (
-                      <Tag icon={<LockOutlined />} color="warning">Fase fechada</Tag>
-                    ) : bet.id ? (
-                      <Button
-                        icon={<EditOutlined />}
-                        size="small"
-                        onClick={() => handleEdit(match.id)}
-                      >
-                        Editar
-                      </Button>
-                    ) : null}
-                  </Col>
-                </Row>
-              </Card>
-            );
-          })}
+          {filteredMatches.map(match => renderMatchCard(match))}
         </Space>
       )}
 
-      {/* Botão salvar no fim da página */}
       {phaseOpen && filteredMatches.length > 0 && (
         <div style={{ textAlign: 'center', marginTop: 32 }}>
           <SaveAllButton />

@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export const GLOBAL_BET_CLOSING = '2026-06-10T23:59:00-03:00';
+export const GLOBAL_BET_CLOSING = '2026-06-11T12:00:00-03:00';
 
 export const GLOBAL_BET_POINTS = {
   champion:      20,

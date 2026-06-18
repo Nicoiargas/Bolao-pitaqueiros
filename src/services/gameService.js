@@ -14,26 +14,28 @@ const mapPhase = r => r ? ({
 }) : null;
 
 const mapMatch = r => r ? ({
-  id:        r.id,
-  phaseId:   r.phase_id,
-  homeTeam:  r.home_team,
-  awayTeam:  r.away_team,
-  group:     r.group_name,
-  homeGoals: r.home_goals,
-  awayGoals: r.away_goals,
-  date:      r.date,
-  status:    r.status,
-  createdAt: r.created_at,
+  id:            r.id,
+  phaseId:       r.phase_id,
+  homeTeam:      r.home_team,
+  awayTeam:      r.away_team,
+  group:         r.group_name,
+  homeGoals:     r.home_goals,
+  awayGoals:     r.away_goals,
+  penaltyWinner: r.penalty_winner ?? null,
+  date:          r.date,
+  status:        r.status,
+  createdAt:     r.created_at,
 }) : null;
 
 const mapBet = r => r ? ({
-  id:        r.id,
-  userId:    r.user_id,
-  matchId:   r.match_id,
-  phaseId:   r.phase_id,
-  homeGoals: r.home_goals,
-  awayGoals: r.away_goals,
-  timestamp: r.timestamp,
+  id:            r.id,
+  userId:        r.user_id,
+  matchId:       r.match_id,
+  phaseId:       r.phase_id,
+  homeGoals:     r.home_goals,
+  awayGoals:     r.away_goals,
+  penaltyWinner: r.penalty_winner ?? null,
+  timestamp:     r.timestamp,
 }) : null;
 
 const mapUser = r => r ? ({
@@ -106,10 +108,9 @@ export async function getAllMatches() {
   return data.map(mapMatch);
 }
 
-export async function updateMatchResult(matchId, homeGoals, awayGoals) {
-  const { error } = await supabase.from('matches')
-    .update({ home_goals: homeGoals, away_goals: awayGoals, status: 'finished' })
-    .eq('id', matchId);
+export async function updateMatchResult(matchId, homeGoals, awayGoals, penaltyWinner = null) {
+  const row = { home_goals: homeGoals, away_goals: awayGoals, status: 'finished', penalty_winner: penaltyWinner };
+  const { error } = await supabase.from('matches').update(row).eq('id', matchId);
   if (error) throw error;
 }
 
@@ -127,13 +128,14 @@ export async function deleteMatch(matchId) {
 
 // ── Palpites ─────────────────────────────────────────────────────────────────
 
-export async function placeBet(userId, matchId, homeGoals, awayGoals, phaseId) {
+export async function placeBet(userId, matchId, homeGoals, awayGoals, phaseId, penaltyWinner = null) {
   const { data, error } = await supabase.from('bets').insert({
-    user_id:    userId,
-    match_id:   matchId,
-    phase_id:   phaseId,
-    home_goals: homeGoals,
-    away_goals: awayGoals,
+    user_id:        userId,
+    match_id:       matchId,
+    phase_id:       phaseId,
+    home_goals:     homeGoals,
+    away_goals:     awayGoals,
+    penalty_winner: penaltyWinner,
   }).select('id').single();
   if (error) throw error;
   return data.id;
@@ -151,9 +153,9 @@ export async function getAllBets() {
   return data.map(mapBet);
 }
 
-export async function updateBet(betId, homeGoals, awayGoals) {
+export async function updateBet(betId, homeGoals, awayGoals, penaltyWinner = null) {
   const { error } = await supabase.from('bets')
-    .update({ home_goals: homeGoals, away_goals: awayGoals, timestamp: new Date().toISOString() })
+    .update({ home_goals: homeGoals, away_goals: awayGoals, penalty_winner: penaltyWinner, timestamp: new Date().toISOString() })
     .eq('id', betId);
   if (error) throw error;
 }
