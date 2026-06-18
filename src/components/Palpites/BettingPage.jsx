@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Card, Button, InputNumber, Tag, Alert, Empty, Spin, Space,
   Typography, Row, Col, Segmented, Select, App, Badge,
@@ -6,7 +6,7 @@ import {
 import { TrophyOutlined, LockOutlined, SaveOutlined, EditOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
-  getAllPhases, getMatchesByPhase, getBetsByUser,
+  getAllPhases, getAllMatches, getMatchesByPhase, getBetsByUser,
   placeBet, updateBet,
 } from '../../services/gameService';
 import { calculatePoints } from '../../services/pointsService';
@@ -82,10 +82,20 @@ function BettingPage({ user }) {
   const [savingAll, setSavingAll]         = useState(false);
   const [groupFilter, setGroupFilter]     = useState('Todos');
   const [positionLabels, setPositionLabels] = useState({});
+  const scrollRef = useRef(null);
 
   useEffect(() => { loadPhases(); }, [user]);
   useEffect(() => { if (selectedPhaseId) loadMatches(selectedPhaseId); }, [selectedPhaseId]);
   useEffect(() => { if (phases.length > 0) loadPositionLabels(phases); }, [phases]);
+
+  useEffect(() => {
+    if (loading || !matches.length) return;
+    const today = dayjs().format('YYYY-MM-DD');
+    const hasToday = matches.some(m => dayjs(toDate(m.date)).format('YYYY-MM-DD') === today);
+    if (hasToday) {
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    }
+  }, [matches, loading]);
 
   const isPhaseOpen = (closingDate) => new Date() < toDate(closingDate);
 
@@ -99,13 +109,19 @@ function BettingPage({ user }) {
   const loadPhases = async () => {
     try {
       setLoading(true);
-      const data = await getAllPhases();
+      const [data, allMatches] = await Promise.all([getAllPhases(), getAllMatches()]);
       const sorted = [...data].sort((a, b) => new Date(toDate(a.closingDate)) - new Date(toDate(b.closingDate)));
       setPhases(sorted);
-      // Fase vigente: a primeira ainda aberta (menor closingDate futuro),
-      // ou a última fechada caso o torneio já tenha encerrado
-      // Última fase fechada = fase de referência vigente
-      // Se nenhuma fechou ainda (torneio recém-começou), usa a primeira aberta
+
+      // Prioridade 1: fase que tem jogos hoje → abre lá e rola até o primeiro
+      const today = dayjs().format('YYYY-MM-DD');
+      const todayMatch = allMatches.find(m => dayjs(toDate(m.date)).format('YYYY-MM-DD') === today);
+      if (todayMatch) {
+        setSelectedPhaseId(todayMatch.phaseId);
+        return;
+      }
+
+      // Prioridade 2: última fase fechada (fase vigente de referência)
       const now = new Date();
       const closed = sorted.filter(p => toDate(p.closingDate) <= now);
       const lastClosed = closed[closed.length - 1];
@@ -272,7 +288,6 @@ function BettingPage({ user }) {
     const dirty   = isDirty(match.id);
     return (
       <Card
-        key={match.id}
         style={{
           borderRadius: 12,
           borderColor: dirty ? '#faad14' : undefined,
@@ -525,7 +540,20 @@ function BettingPage({ user }) {
         <Empty description="Nenhum jogo nesta fase" />
       ) : (
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
-          {filteredMatches.map(match => renderMatchCard(match))}
+          {(() => {
+            const today = dayjs().format('YYYY-MM-DD');
+            let firstTodayFound = false;
+            return filteredMatches.map(match => {
+              const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
+              const isScrollTarget = isToday && !firstTodayFound;
+              if (isScrollTarget) firstTodayFound = true;
+              return (
+                <div key={match.id} ref={isScrollTarget ? scrollRef : null}>
+                  {renderMatchCard(match)}
+                </div>
+              );
+            });
+          })()}
         </Space>
       )}
 
