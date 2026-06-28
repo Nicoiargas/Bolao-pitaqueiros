@@ -102,12 +102,26 @@ function BettingPage({ user }) {
 
   const isPhaseOpen = (closingDate) => new Date() < toDate(closingDate);
 
+  const BRT_OFFSET_MS = -3 * 60 * 60 * 1000;
+  const EXCEPTION_DATE_BRT = '2026-06-28'; // exceção: fechamento estendido por bug de fuso
+
+  const getMatchBrtDateStr = (matchDateRaw) => {
+    const inBrt = new Date(toDate(matchDateRaw).getTime() + BRT_OFFSET_MS);
+    return `${inBrt.getUTCFullYear()}-${String(inBrt.getUTCMonth()+1).padStart(2,'0')}-${String(inBrt.getUTCDate()).padStart(2,'0')}`;
+  };
+
   const isMatchOpen = (match, phase) => {
     if (!phase) return false;
     if (KNOCKOUT_PHASES.includes(phase.name)) {
       const matchDate = toDate(match.date);
-      const deadline = new Date(matchDate);
-      deadline.setHours(12, 0, 0, 0);
+      const matchInBrt = new Date(matchDate.getTime() + BRT_OFFSET_MS);
+      const closingHourBrt = getMatchBrtDateStr(match.date) === EXCEPTION_DATE_BRT ? 13 : 12;
+      const deadline = new Date(Date.UTC(
+        matchInBrt.getUTCFullYear(),
+        matchInBrt.getUTCMonth(),
+        matchInBrt.getUTCDate(),
+        closingHourBrt + 3, 0, 0, 0  // BRT = UTC-3
+      ));
       return new Date() < deadline;
     }
     return new Date() < toDate(phase.closingDate);
@@ -584,7 +598,7 @@ function BettingPage({ user }) {
                     {dayjs(dayKey).format('dddd, DD/MM')}
                   </Text>
                   <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
-                    Palpites fecham às 12:00
+                    {`Palpites fecham às ${getMatchBrtDateStr(dayMatches[0].date) === EXCEPTION_DATE_BRT ? 13 : 12}:00 (horário de Brasília)`}
                   </Tag>
                 </div>
                 <Space direction="vertical" style={{ width: '100%' }} size={12}>
