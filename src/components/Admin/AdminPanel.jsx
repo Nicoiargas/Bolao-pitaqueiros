@@ -3,7 +3,9 @@ import { Card, Tabs, Typography, Space, Button, Alert, List, Tag, Table, Collaps
 import {
   PlusOutlined, EditOutlined, SettingOutlined,
   ThunderboltOutlined, CheckCircleOutlined, BugOutlined, ReloadOutlined, TrophyOutlined,
+  DownloadOutlined,
 } from '@ant-design/icons';
+import dayjs from 'dayjs';
 import PhaseManager from './PhaseManager';
 import MatchManager from './MatchManager';
 import GlobalBetManager from './GlobalBetManager';
@@ -129,6 +131,168 @@ function DiagnosticPanel() {
   );
 }
 
+function toCSV(rows) {
+  return rows.map(row =>
+    row.map(cell => {
+      const s = String(cell ?? '');
+      return s.includes(';') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    }).join(';')
+  ).join('\r\n');
+}
+
+function downloadCSV(filename, rows) {
+  const bom   = '﻿'; // BOM para Excel reconhecer UTF-8
+  const blob  = new Blob([bom + toCSV(rows)], { type: 'text/csv;charset=utf-8;' });
+  const url   = URL.createObjectURL(blob);
+  const link  = document.createElement('a');
+  link.href   = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function ExportPanel() {
+  const [data, setData]         = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [exporting, setExporting] = useState(null); // phaseId sendo exportado
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [users, bets, matches, phases] = await Promise.all([
+          getRanking(), getAllBets(), getAllMatches(), getAllPhases(),
+        ]);
+        setData({ users, bets, matches, phases });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
+  if (!data)   return <Alert type="error" message="Erro ao carregar dados" />;
+
+  const { users, bets, matches, phases } = data;
+
+  const handleExport = (phase) => {
+    setExporting(phase.id);
+    try {
+      const phaseMatches = matches.filter(m => m.phaseId === phase.id);
+      const phaseBets    = bets.filter(b => b.phaseId === phase.id);
+
+      const header = [
+        'Usuário', 'Email',
+        'Jogo', 'Data',
+        'Palpite Casa', 'Palpite Fora', 'Pênaltis Apostados',
+        'Resultado Casa', 'Resultado Fora', 'Pênaltis Resultado',
+        'Pontos',
+      ];
+
+      const rows = [header];
+
+      for (const match of phaseMatches) {
+        const matchBets = phaseBets.filter(b => b.matchId === match.id);
+        const jogo      = `${match.homeTeam} x ${match.awayTeam}`;
+        const data_jogo = dayjs(match.date).format('DD/MM/YYYY HH:mm');
+        const resHome   = match.homeGoals ?? '';
+        const resAway   = match.awayGoals ?? '';
+        const resPen    = match.penaltyWinner ?? '';
+
+        for (const bet of matchBets) {
+          const user = users.find(u => u.uid === bet.userId);
+          const pts  = match.status === 'finished'
+            ? calculatePoints(
+                { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals, penaltyWinner: bet.penaltyWinner ?? null },
+                { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null },
+                phase.pointsPerGame,
+              )
+            : '';
+
+          rows.push([
+            user?.displayName ?? bet.userId,
+            user?.email ?? '',
+            jogo,
+            data_jogo,
+            bet.homeGoals ?? '',
+            bet.awayGoals ?? '',
+            bet.penaltyWinner ?? '',
+            resHome, resAway, resPen,
+            pts,
+          ]);
+        }
+
+        // Linha para usuários sem palpite nesse jogo
+        const betUserIds = new Set(matchBets.map(b => b.userId));
+        for (const user of users.filter(u => u.role !== 'admin' && !betUserIds.has(u.uid))) {
+          rows.push([
+            user.displayName ?? user.email,
+            user.email,
+            jogo, data_jogo,
+            'SEM PALPITE', '', '',
+            resHome, resAway, resPen,
+            '',
+          ]);
+        }
+      }
+
+      const filename = `palpites_${phase.name.replace(/\s+/g, '_')}_${dayjs().format('YYYY-MM-DD')}.csv`;
+      downloadCSV(filename, rows);
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  return (
+    <div>
+      <Alert
+        type="info" showIcon style={{ marginBottom: 20, borderRadius: 8 }}
+        message="Backup de palpites por fase"
+        description="Exporta todos os palpites (incluindo ausentes) em CSV compatível com Excel. Use no fechamento de cada fase."
+      />
+      <Space direction="vertical" style={{ width: '100%' }} size={12}>
+        {phases.map(phase => {
+          const phaseMatches = matches.filter(m => m.phaseId === phase.id);
+          const phaseBets    = bets.filter(b => b.phaseId === phase.id);
+          const closed       = new Date() > new Date(phase.closingDate);
+          return (
+            <Card
+              key={phase.id}
+              style={{ borderRadius: 10, borderColor: closed ? '#d9d9d9' : '#91caff' }}
+              styles={{ body: { padding: '14px 20px' } }}
+            >
+              <Space style={{ width: '100%', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+                <Space direction="vertical" size={2}>
+                  <Space>
+                    <Text strong style={{ fontSize: 15 }}>{phase.name}</Text>
+                    <Tag color={closed ? 'default' : 'processing'}>
+                      {closed ? 'Fechada' : 'Aberta'}
+                    </Tag>
+                  </Space>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {phaseMatches.length} jogos · {phaseBets.length} palpites ·{' '}
+                    Fechamento: {dayjs(phase.closingDate).format('DD/MM/YYYY HH:mm')}
+                  </Text>
+                </Space>
+                <Button
+                  icon={<DownloadOutlined />}
+                  type={closed ? 'primary' : 'default'}
+                  loading={exporting === phase.id}
+                  disabled={phaseBets.length === 0}
+                  onClick={() => handleExport(phase)}
+                  style={closed ? { background: '#008B46', borderColor: '#008B46' } : {}}
+                >
+                  Exportar CSV
+                </Button>
+              </Space>
+            </Card>
+          );
+        })}
+      </Space>
+    </div>
+  );
+}
+
 function AdminPanel() {
   const [activeTab, setActiveTab]         = useState('fases');
   const [recalcLoading, setRecalcLoading] = useState(false);
@@ -151,10 +315,11 @@ function AdminPanel() {
   };
 
   const tabItems = [
-    { key: 'fases',  label: <Space><PlusOutlined />Fases</Space>,        children: <PhaseManager /> },
-    { key: 'jogos',  label: <Space><EditOutlined />Jogos</Space>,        children: <MatchManager /> },
-    { key: 'global', label: <Space><TrophyOutlined />Palpite Global</Space>, children: <GlobalBetManager /> },
-    { key: 'diag',   label: <Space><BugOutlined />Diagnóstico</Space>,   children: <DiagnosticPanel /> },
+    { key: 'fases',   label: <Space><PlusOutlined />Fases</Space>,           children: <PhaseManager /> },
+    { key: 'jogos',   label: <Space><EditOutlined />Jogos</Space>,           children: <MatchManager /> },
+    { key: 'global',  label: <Space><TrophyOutlined />Palpite Global</Space>, children: <GlobalBetManager /> },
+    { key: 'export',  label: <Space><DownloadOutlined />Exportar</Space>,    children: <ExportPanel /> },
+    { key: 'diag',    label: <Space><BugOutlined />Diagnóstico</Space>,      children: <DiagnosticPanel /> },
   ];
 
   return (

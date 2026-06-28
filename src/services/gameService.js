@@ -171,7 +171,7 @@ export async function getPhaseCompletionStats() {
   const [{ data: matches, error: e1 }, { data: bets, error: e2 }, { data: users, error: e3 }] = await Promise.all([
     supabase.from('matches').select('id, phase_id'),
     supabase.from('bets').select('user_id, match_id'),
-    supabase.from('users').select('id').neq('role', 'admin'),
+    supabase.from('users').select('id').neq('role', 'admin').neq('role', 'inactive'),
   ]);
   if (e1 || e2 || e3) return {};
 
@@ -198,6 +198,7 @@ export async function getRanking() {
   const { data, error } = await supabase
     .from('users').select('*')
     .neq('role', 'admin')
+    .neq('role', 'inactive')
     .order('total_points', { ascending: false });
   if (error) throw error;
   return data.map(mapUser);
@@ -218,7 +219,7 @@ export async function recalculateAllPoints() {
     getAllBets(),
     getAllGlobalBets(),
     getGlobalResults(),
-    supabase.from('users').select('*').neq('role', 'admin'),
+    supabase.from('users').select('*').neq('role', 'admin').neq('role', 'inactive'),
   ]);
   if (error) throw error;
 

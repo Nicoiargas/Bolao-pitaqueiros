@@ -1,4 +1,5 @@
 const CORRECT_SCORE_MULTIPLIER = 3;
+const PENALTY_WINNER_MULTIPLIER = 2;
 
 export const PHASES = ['Grupos', 'Round of 32', 'Oitavas', 'Quartas', 'Semis', 'Final'];
 
@@ -13,7 +14,16 @@ export function calculatePoints(userBet, actualMatch, basePoints) {
     userBet.homeGoals === actualMatch.homeGoals &&
     userBet.awayGoals === actualMatch.awayGoals
   ) {
-    return basePoints * CORRECT_SCORE_MULTIPLIER;
+    const exactPoints = basePoints * CORRECT_SCORE_MULTIPLIER;
+    // Bônus pênaltis: apostou empate em mata-mata e acertou o vencedor nos pênaltis
+    if (
+      userBet.homeGoals === userBet.awayGoals &&
+      userBet.penaltyWinner && actualMatch.penaltyWinner &&
+      userBet.penaltyWinner === actualMatch.penaltyWinner
+    ) {
+      return exactPoints * PENALTY_WINNER_MULTIPLIER;
+    }
+    return exactPoints;
   }
 
   if (betResult === matchResult) {
@@ -36,10 +46,10 @@ export function getTotalPoints(userBets, allMatches, allPhases) {
     const basePoints = phase?.pointsPerGame ?? 0;
     const bet        = userBets.find(b => b.matchId === match.id);
     // No bet → assume 0×0
-    const betGoals   = bet
-      ? { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals }
-      : { homeGoals: 0,             awayGoals: 0             };
-    total += calculatePoints(betGoals, { homeGoals: match.homeGoals, awayGoals: match.awayGoals }, basePoints);
+    const betGoals = bet
+      ? { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals, penaltyWinner: bet.penaltyWinner ?? null }
+      : { homeGoals: 0,             awayGoals: 0,             penaltyWinner: null };
+    total += calculatePoints(betGoals, { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null }, basePoints);
   });
   return total;
 }

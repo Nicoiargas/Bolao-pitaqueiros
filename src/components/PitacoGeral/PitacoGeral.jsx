@@ -1,34 +1,226 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Collapse, Tag, Spin, Typography, Empty } from 'antd';
-import { TrophyOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Card, Tag, Spin, Typography, Empty, Segmented, Space } from 'antd';
+import { TrophyOutlined, LockOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import dayjs from 'dayjs';
+import 'dayjs/locale/pt-br';
 import { getAllMatches, getAllPhases, getAllBets, getRanking } from '../../services/gameService';
 import { calculatePoints } from '../../services/pointsService';
 import FlagImage from '../FlagImage';
+
+dayjs.locale('pt-br');
 
 const { Title, Text } = Typography;
 
 const GREEN = '#008B46';
 const BLUE  = '#0033A0';
 const GOLD  = '#FFD500';
-
+const KNOCKOUT_PHASES = ['Round of 32', 'Oitavas', 'Quartas', 'Semis', 'Final'];
 const PHASE_ORDER = ['Grupos', 'Round of 32', 'Oitavas', 'Quartas', 'Semis', 'Final'];
 
-function fmtPlacar(hg, ag) {
-  return hg != null && ag != null ? `${hg} × ${ag}` : '—';
+const toDate = (val) => {
+  if (!val) return null;
+  if (val?.seconds) return new Date(val.seconds * 1000);
+  return new Date(val);
+};
+
+function isMatchVisible(match, phase) {
+  if (!phase) return false;
+  if (KNOCKOUT_PHASES.includes(phase.name)) {
+    const deadline = new Date(toDate(match.date));
+    deadline.setHours(12, 0, 0, 0);
+    return new Date() >= deadline;
+  }
+  return new Date() >= toDate(phase.closingDate);
 }
 
-function fmtData(iso) {
-  if (!iso) return '';
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+function fmtPlacar(hg, ag) {
+  return hg != null && ag != null ? `${hg} × ${ag}` : '— × —';
+}
+
+function UserBetChip({ user, bet, match, basePoints }) {
+  const finished = match.status === 'finished';
+  const hasBet = bet && bet.homeGoals != null && bet.awayGoals != null;
+
+  let pts = 0;
+  let isExact = false;
+  let isPenBonus = false;
+
+  if (finished && hasBet) {
+    pts = calculatePoints(
+      { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals, penaltyWinner: bet.penaltyWinner ?? null },
+      { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null },
+      basePoints,
+    );
+    isExact = bet.homeGoals === match.homeGoals && bet.awayGoals === match.awayGoals;
+    isPenBonus = isExact && bet.homeGoals === bet.awayGoals
+      && bet.penaltyWinner && match.penaltyWinner
+      && bet.penaltyWinner === match.penaltyWinner;
+  }
+
+  const borderColor = isExact ? '#d4a017' : pts > 0 ? GREEN : '#e0e0e0';
+  const bg          = isExact ? '#fffbe6' : pts > 0 ? 'rgba(0,139,70,0.05)' : hasBet ? 'white' : '#fafafa';
+  const scoreColor  = isExact ? '#8B6914' : pts > 0 ? GREEN : '#333';
+
+  const words = (user.displayName || user.email || '').split(' ');
+  const raw = words.length > 1 && words[0].length <= 2 ? words[1] : words[0];
+  const firstName = raw.charAt(0).toUpperCase() + raw.slice(1);
+
+  return (
+    <div style={{
+      border: `2px solid ${borderColor}`,
+      borderRadius: 10,
+      padding: '8px 12px',
+      background: bg,
+      minWidth: 92,
+      textAlign: 'center',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      gap: 2,
+    }}>
+      <Text style={{ fontSize: 11, color: '#888', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 90 }}>
+        {firstName}
+      </Text>
+
+      {hasBet ? (
+        <>
+          <span style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 800, color: scoreColor, lineHeight: 1.3 }}>
+            {fmtPlacar(bet.homeGoals, bet.awayGoals)}
+            {isExact && <span style={{ marginLeft: 3 }}>🎯</span>}
+          </span>
+          {bet.penaltyWinner && (
+            <Text style={{ fontSize: 10, color: '#aaa' }}>pên: {bet.penaltyWinner}</Text>
+          )}
+          {finished && (
+            pts > 0 ? (
+              <Tag color="success" style={{ margin: 0, fontSize: 11, fontWeight: 700, lineHeight: '18px' }}>
+                +{pts % 1 === 0 ? pts : pts.toFixed(1)}{isPenBonus ? ' ×2' : ''}
+              </Tag>
+            ) : (
+              <Tag color="default" style={{ margin: 0, fontSize: 11, lineHeight: '18px' }}>0 pts</Tag>
+            )
+          )}
+        </>
+      ) : (
+        <Text style={{ fontSize: 12, color: '#ccc', fontStyle: 'italic' }}>sem pitaco</Text>
+      )}
+    </div>
+  );
+}
+
+function MatchCard({ match, phase, betsByMatch, users }) {
+  const matchBets  = betsByMatch[match.id] ?? [];
+  const basePoints = phase?.pointsPerGame ?? 0;
+  const finished   = match.status === 'finished';
+
+  const sortedUsers = useMemo(() => {
+    return [...users].sort((a, b) => {
+      if (!finished) return (a.displayName || '').localeCompare(b.displayName || '');
+      const betA = matchBets.find(bm => bm.userId === a.uid);
+      const betB = matchBets.find(bm => bm.userId === b.uid);
+      const calc = (bet) => bet
+        ? calculatePoints(
+            { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals, penaltyWinner: bet.penaltyWinner ?? null },
+            { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null },
+            basePoints,
+          )
+        : 0;
+      return calc(betB) - calc(betA) || (a.displayName || '').localeCompare(b.displayName || '');
+    });
+  }, [users, matchBets, finished]);
+
+  return (
+    <Card
+      style={{ borderRadius: 14, overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.07)', border: '1px solid #ebebeb' }}
+      styles={{ body: { padding: 0 } }}
+    >
+      {/* Cabeçalho do jogo */}
+      <div style={{ padding: '14px 20px 12px', background: 'linear-gradient(135deg, #f5f8ff 0%, #eef3ff 100%)', borderBottom: '1px solid #e8edf8' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            {dayjs(toDate(match.date)).format('DD/MM · HH:mm')}
+          </Text>
+          {finished ? (
+            <Tag icon={<LockOutlined />} color="default" style={{ margin: 0, fontSize: 11 }}>Encerrado</Tag>
+          ) : (
+            <Tag icon={<ClockCircleOutlined />} color="processing" style={{ margin: 0, fontSize: 11 }}>Aguardando resultado</Tag>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+          {/* Time da casa */}
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <FlagImage name={match.homeTeam} height={28} />
+            <Text strong style={{ fontSize: 13, color: BLUE, display: 'block', marginTop: 4, lineHeight: 1.2 }}>
+              {match.homeTeam}
+            </Text>
+          </div>
+
+          {/* Placar */}
+          <div style={{ textAlign: 'center', minWidth: 90 }}>
+            <div style={{
+              fontSize: 20,
+              fontWeight: 900,
+              fontFamily: 'monospace',
+              color: finished ? '#111' : '#bbb',
+              background: 'white',
+              borderRadius: 8,
+              padding: '6px 10px',
+              border: `2px solid ${finished ? '#d0d8f0' : '#e8e8e8'}`,
+              boxShadow: finished ? '0 1px 4px rgba(0,51,160,0.10)' : 'none',
+              display: 'inline-block',
+              minWidth: 80,
+            }}>
+              {finished ? fmtPlacar(match.homeGoals, match.awayGoals) : '? × ?'}
+            </div>
+            {match.penaltyWinner && (
+              <Text style={{ fontSize: 10, color: '#888', display: 'block', marginTop: 2 }}>
+                pên: {match.penaltyWinner}
+              </Text>
+            )}
+          </div>
+
+          {/* Time visitante */}
+          <div style={{ textAlign: 'center', flex: 1 }}>
+            <FlagImage name={match.awayTeam} height={28} />
+            <Text strong style={{ fontSize: 13, color: BLUE, display: 'block', marginTop: 4, lineHeight: 1.2 }}>
+              {match.awayTeam}
+            </Text>
+          </div>
+        </div>
+      </div>
+
+      {/* Grid de pitacos */}
+      <div style={{ padding: '12px 20px 16px' }}>
+        <Text style={{ fontSize: 10, fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, display: 'block', marginBottom: 10 }}>
+          Pitacos
+        </Text>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {sortedUsers.map(user => (
+            <UserBetChip
+              key={user.uid}
+              user={user}
+              bet={matchBets.find(b => b.userId === user.uid)}
+              match={match}
+              basePoints={basePoints}
+            />
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
 }
 
 function PitacoGeral() {
-  const [loading, setLoading] = useState(true);
-  const [matches, setMatches]   = useState([]);
-  const [phases, setPhases]     = useState([]);
-  const [betsByMatch, setBetsByMatch] = useState({});
-  const [users, setUsers]       = useState([]);
-  const [phaseMap, setPhaseMap] = useState({});
+  const [loading, setLoading]           = useState(true);
+  const [matches, setMatches]           = useState([]);
+  const [phases, setPhases]             = useState([]);
+  const [betsByMatch, setBetsByMatch]   = useState({});
+  const [users, setUsers]               = useState([]);
+  const [phaseMap, setPhaseMap]         = useState({});
+  const [selectedPhaseId, setSelectedPhaseId] = useState(null);
+  const scrollRef   = useRef(null);
+  const hasScrolled = useRef(false);
 
   useEffect(() => {
     Promise.all([
@@ -45,7 +237,7 @@ function PitacoGeral() {
       const sorted = [...allPhases].sort((a, b) => {
         const ia = PHASE_ORDER.indexOf(a.name);
         const ib = PHASE_ORDER.indexOf(b.name);
-        return (ib === -1 ? 99 : ib) - (ia === -1 ? 99 : ia);
+        return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
       });
       setPhases(sorted);
 
@@ -55,6 +247,25 @@ function PitacoGeral() {
         bm[b.matchId].push(b);
       });
       setBetsByMatch(bm);
+
+      // Seleciona a fase mais recente com pelo menos um jogo visível
+      const now = new Date();
+      const phaseById = Object.fromEntries(allPhases.map(p => [p.id, p]));
+      const matchesByPhaseId = {};
+      allMatches.forEach(m => {
+        if (!matchesByPhaseId[m.phaseId]) matchesByPhaseId[m.phaseId] = [];
+        matchesByPhaseId[m.phaseId].push(m);
+      });
+
+      const withVisible = sorted.filter(p =>
+        (matchesByPhaseId[p.id] ?? []).some(m => isMatchVisible(m, phaseById[m.phaseId]))
+      );
+
+      if (withVisible.length > 0) {
+        setSelectedPhaseId(withVisible[withVisible.length - 1].id);
+      } else {
+        setSelectedPhaseId(sorted[0]?.id ?? null);
+      }
     }).catch(console.error).finally(() => setLoading(false));
   }, []);
 
@@ -64,9 +275,24 @@ function PitacoGeral() {
       if (!map[m.phaseId]) map[m.phaseId] = [];
       map[m.phaseId].push(m);
     });
-    Object.values(map).forEach(arr => arr.sort((a, b) => new Date(b.date) - new Date(a.date)));
+    Object.values(map).forEach(arr => arr.sort((a, b) => new Date(a.date) - new Date(b.date)));
     return map;
   }, [matches]);
+
+  const currentMatches = useMemo(() => {
+    const phase = phaseMap[selectedPhaseId];
+    return (matchesByPhase[selectedPhaseId] ?? []).filter(m => isMatchVisible(m, phase));
+  }, [matchesByPhase, selectedPhaseId, phaseMap]);
+
+  useEffect(() => {
+    if (loading || hasScrolled.current) return;
+    const today = dayjs().format('YYYY-MM-DD');
+    const hasToday = currentMatches.some(m => dayjs(toDate(m.date)).format('YYYY-MM-DD') === today);
+    if (hasToday) {
+      hasScrolled.current = true;
+      setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
+    }
+  }, [loading, currentMatches]);
 
   if (loading) {
     return (
@@ -76,162 +302,77 @@ function PitacoGeral() {
     );
   }
 
-  const hasAnyFinished = phases.some(p =>
-    (matchesByPhase[p.id] ?? []).some(m => m.status === 'finished')
+  const visiblePhases = phases.filter(p =>
+    (matchesByPhase[p.id] ?? []).some(m => isMatchVisible(m, p))
   );
 
+  const currentPhase = phaseMap[selectedPhaseId];
+
+  const segmentedOptions = visiblePhases.map(p => ({ label: p.name, value: p.id }));
+
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', padding: '24px 16px' }}>
+    <div style={{ maxWidth: 860, margin: '0 auto', padding: '24px 16px' }}>
       {/* Header */}
       <div style={{
         background: `linear-gradient(90deg, ${GREEN}, ${BLUE})`,
-        borderRadius: 16, padding: '20px 28px', marginBottom: 28,
+        borderRadius: 16, padding: '20px 28px', marginBottom: 24,
         display: 'flex', alignItems: 'center', gap: 14,
       }}>
         <TrophyOutlined style={{ fontSize: 40, color: GOLD }} />
         <div>
           <Title level={3} style={{ color: 'white', margin: 0 }}>Pitaco Geral</Title>
           <Text style={{ color: 'rgba(255,255,255,0.75)' }}>
-            Veja os palpites de todos nos jogos encerrados
+            Pitacos de todos após o fechamento das fases
           </Text>
         </div>
       </div>
 
-      {!hasAnyFinished && (
-        <Empty description="Nenhum jogo encerrado ainda." />
-      )}
-
-      {phases.map(phase => {
-        const phaseMatches = (matchesByPhase[phase.id] ?? []).filter(m => m.status === 'finished');
-        if (phaseMatches.length === 0) return null;
-
-        const collapseItems = phaseMatches.map(match => {
-          const matchBets  = betsByMatch[match.id] ?? [];
-          const basePoints = phaseMap[match.phaseId]?.pointsPerGame ?? 0;
-
-          const rows = users.map(user => {
-            const bet = matchBets.find(b => b.userId === user.uid);
-            const pts = bet
-              ? calculatePoints(
-                  { homeGoals: bet.homeGoals, awayGoals: bet.awayGoals, penaltyWinner: bet.penaltyWinner ?? null },
-                  { homeGoals: match.homeGoals, awayGoals: match.awayGoals, penaltyWinner: match.penaltyWinner ?? null },
-                  basePoints,
-                )
-              : 0;
-            const isExact = bet && bet.homeGoals === match.homeGoals && bet.awayGoals === match.awayGoals;
-            const isPenBonus = isExact && bet.homeGoals === bet.awayGoals
-              && bet.penaltyWinner && match.penaltyWinner
-              && bet.penaltyWinner === match.penaltyWinner;
-            return { user, bet, pts, isExact, isPenBonus };
-          });
-
-          rows.sort((a, b) => b.pts - a.pts || (a.user.displayName || '').localeCompare(b.user.displayName || ''));
-
-          return {
-            key: match.id,
-            label: (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <span style={{ fontWeight: 600, color: '#1a1a1a', flex: 1, minWidth: 160, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <FlagImage name={match.homeTeam} height={14} />
-                    {match.homeTeam}
-                  </span>
-                  <span style={{ color: '#aaa', fontWeight: 400, fontSize: 12 }}>vs</span>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                    <FlagImage name={match.awayTeam} height={14} />
-                    {match.awayTeam}
-                  </span>
-                </span>
-                <Tag style={{ background: GREEN, color: 'white', border: 'none', fontWeight: 700, fontFamily: 'monospace', fontSize: 14, padding: '2px 12px', margin: 0 }}>
-                  {fmtPlacar(match.homeGoals, match.awayGoals)}
-                </Tag>
-                {match.penaltyWinner && (
-                  <Tag style={{ background: '#722ed1', color: 'white', border: 'none', fontSize: 11, margin: 0 }}>
-                    Pên: {match.penaltyWinner}
-                  </Tag>
-                )}
-              </div>
-            ),
-            children: (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                  <thead>
-                    <tr style={{ background: '#f5f7fa' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 12px', color: '#666', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', borderBottom: '2px solid #e8eaed' }}>
-                        Pitaqueiro
-                      </th>
-                      <th style={{ textAlign: 'center', padding: '8px 12px', color: '#666', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', borderBottom: '2px solid #e8eaed' }}>
-                        Pitaco
-                      </th>
-                      <th style={{ textAlign: 'center', padding: '8px 12px', color: '#666', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', borderBottom: '2px solid #e8eaed', width: 80 }}>
-                        Pontos
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map(({ user, bet, pts, isExact, isPenBonus }) => (
-                      <tr
-                        key={user.uid}
-                        style={{ borderBottom: '1px solid #f0f0f0', background: pts > 0 ? 'rgba(0,139,70,0.03)' : 'white' }}
-                      >
-                        <td style={{ padding: '10px 12px', fontWeight: 500, color: '#222' }}>
-                          {user.displayName || user.email}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center', fontFamily: 'monospace', fontSize: 15 }}>
-                          {bet ? (
-                            <span style={{ color: isExact ? GREEN : '#444' }}>
-                              {fmtPlacar(bet.homeGoals, bet.awayGoals)}
-                              {bet.penaltyWinner && (
-                                <span style={{ fontSize: 11, color: '#888', marginLeft: 6 }}>
-                                  pên: {bet.penaltyWinner}
-                                </span>
-                              )}
-                              {isExact && <span style={{ marginLeft: 6 }}>🎯</span>}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#ccc' }}>sem pitaco</span>
-                          )}
-                        </td>
-                        <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                          {pts > 0 ? (
-                            <span style={{ fontWeight: 700, fontSize: 16, color: GREEN }}>
-                              +{pts % 1 === 0 ? pts : pts.toFixed(1)}
-                              {isPenBonus && (
-                                <span style={{ fontSize: 10, color: '#722ed1', marginLeft: 3, fontWeight: 600 }}>×2</span>
-                              )}
-                            </span>
-                          ) : (
-                            <span style={{ color: '#ccc', fontSize: 13 }}>0</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ),
-          };
-        });
-
-        return (
-          <div key={phase.id} style={{ marginBottom: 32 }}>
-            {/* Cabeçalho da fase */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
-              <div style={{ flex: 1, height: 1, background: '#e4e4e4' }} />
-              <Tag style={{ background: BLUE, color: 'white', border: 'none', fontWeight: 700, fontSize: 12, padding: '3px 16px', borderRadius: 20, margin: 0 }}>
-                {phase.name}
-              </Tag>
-              <div style={{ flex: 1, height: 1, background: '#e4e4e4' }} />
+      {visiblePhases.length === 0 ? (
+        <Empty description="Nenhuma fase fechada ainda — os pitacos aparecem aqui após o fechamento." />
+      ) : (
+        <>
+          {/* Seletor de fase */}
+          {visiblePhases.length > 1 && (
+            <div style={{ marginBottom: 20 }}>
+              <Segmented
+                options={segmentedOptions}
+                value={selectedPhaseId}
+                onChange={setSelectedPhaseId}
+                style={{ background: 'white' }}
+              />
             </div>
+          )}
 
-            <Collapse
-              items={collapseItems}
-              expandIconPosition="end"
-              style={{ background: 'white', borderRadius: 12, border: '1px solid #e8eaed', overflow: 'hidden' }}
-            />
-          </div>
-        );
-      })}
+          {/* Cards dos jogos */}
+          <Space direction="vertical" style={{ width: '100%' }} size={16}>
+            {currentMatches.length === 0 ? (
+              <Empty description="Nenhum pitaco disponível ainda para esta fase." />
+            ) : (() => {
+              const today = dayjs().format('YYYY-MM-DD');
+              let firstTodayFound = false;
+              return currentMatches.map(match => {
+                const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
+                const isScrollTarget = isToday && !firstTodayFound;
+                if (isScrollTarget) firstTodayFound = true;
+                return (
+                  <div
+                    key={match.id}
+                    ref={isScrollTarget ? scrollRef : null}
+                    style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}
+                  >
+                    <MatchCard
+                      match={match}
+                      phase={currentPhase}
+                      betsByMatch={betsByMatch}
+                      users={users}
+                    />
+                  </div>
+                );
+              });
+            })()}
+          </Space>
+        </>
+      )}
     </div>
   );
 }

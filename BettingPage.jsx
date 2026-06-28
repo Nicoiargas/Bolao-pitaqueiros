@@ -34,7 +34,9 @@ function BettingPage({ user }) {
     try {
       setLoading(true);
       const phasesData = await getAllPhases();
-      const openPhases = phasesData.filter(p => isPhaseOpen(p.closingDate));
+      const openPhases = phasesData.filter(p =>
+        KNOCKOUT_PHASES.includes(p.name) || isPhaseOpen(p.closingDate)
+      );
       setPhases(phasesData);
       if (openPhases.length > 0) {
         setSelectedPhase(openPhases[0].id);
@@ -82,6 +84,30 @@ function BettingPage({ user }) {
     const closingTime = new Date(closingDate.seconds * 1000);
     return formatDistanceToNow(closingTime, { locale: ptBR, addSuffix: true });
   };
+
+  const KNOCKOUT_PHASES = ['Pré-Oitavas', 'Oitavas', 'Quartas', 'Semis', 'Final'];
+
+  const groupMatchesByDay = (matchList) => {
+    const groups = {};
+    [...matchList]
+      .sort((a, b) => a.date.seconds - b.date.seconds)
+      .forEach(match => {
+        const d = new Date(match.date.seconds * 1000);
+        const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+        if (!groups[key]) groups[key] = { date: d, matches: [] };
+        groups[key].matches.push(match);
+      });
+    return Object.values(groups).sort((a, b) => a.date - b.date);
+  };
+
+  const isMatchOpen = (match, phase) => {
+    if (!KNOCKOUT_PHASES.includes(phase?.name)) return isPhaseOpen(phase.closingDate);
+    const matchDate = new Date(match.date.seconds * 1000);
+    const deadline = new Date(matchDate);
+    deadline.setHours(12, 0, 0, 0);
+    return new Date() < deadline;
+  };
+
 
   const handleBetChange = (matchId, field, value) => {
     const numValue = value === '' ? '' : parseInt(value);
@@ -178,7 +204,8 @@ function BettingPage({ user }) {
           <h2 className="text-xl font-bold text-brasil-verde mb-4">Escolha a Fase</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {phases.map((phase) => {
-              const isOpen = isPhaseOpen(phase.closingDate);
+              const isKnockout = KNOCKOUT_PHASES.includes(phase.name);
+              const isOpen = isKnockout || isPhaseOpen(phase.closingDate);
               return (
                 <button
                   key={phase.id}
@@ -200,8 +227,8 @@ function BettingPage({ user }) {
         </div>
       )}
 
-      {/* Current Phase Info */}
-      {currentPhase && (
+      {/* Current Phase Info — apenas para Grupos */}
+      {currentPhase && !KNOCKOUT_PHASES.includes(currentPhase.name) && (
         <div className={`mb-8 p-4 rounded-lg border-l-4 flex items-start gap-3 ${
           isPhaseActive
             ? 'bg-green-50 border-brasil-verde'
@@ -222,106 +249,126 @@ function BettingPage({ user }) {
       {/* Matches Grid */}
       {matches.length > 0 ? (
         <div className="space-y-4">
-          {matches.map((match) => {
-            const bet = bets[match.id];
-            const isFinished = match.status === 'finished';
+          {(KNOCKOUT_PHASES.includes(currentPhase?.name)
+            ? groupMatchesByDay(matches)
+            : [{ date: null, matches }]
+          ).map(({ date, matches: dayMatches }) => (
+            <div key={date ? date.toISOString() : 'all'}>
+              {/* Label do dia — apenas mata-mata */}
+              {date && (
+                <div className="flex items-center gap-3 mb-3 mt-4 first:mt-0">
+                  <span className="text-sm font-bold text-brasil-azul">
+                    {date.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: '2-digit' })}
+                  </span>
+                  <span className="text-xs font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                    Palpites fecham às 12:00
+                  </span>
+                </div>
+              )}
 
-            return (
-              <div
-                key={match.id}
-                className="bg-white rounded-xl shadow-lg p-4 md:p-6 hover:shadow-xl transition"
-              >
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                  {/* Match Info */}
-                  <div className="text-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <p className="text-sm text-gray-600">
-                        {new Date(match.date.seconds * 1000).toLocaleDateString('pt-BR', {
-                          day: '2-digit',
-                          month: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                      <p className="text-xl font-bold text-brasil-azul">
-                        {match.homeTeam}
-                      </p>
-                      <p className="text-xl font-bold text-brasil-azul">
-                        vs
-                      </p>
-                      <p className="text-xl font-bold text-brasil-azul">
-                        {match.awayTeam}
-                      </p>
-                    </div>
-                  </div>
+              {dayMatches.map((match) => {
+                const bet = bets[match.id];
+                const isFinished = match.status === 'finished';
+                const canBet = isMatchOpen(match, currentPhase);
 
-                  {/* Betting Inputs */}
-                  <div className="flex justify-center items-center gap-3">
-                    <input
-                      type="number"
-                      min="0"
-                      max="9"
-                      value={bet?.home ?? ''}
-                      onChange={(e) => handleBetChange(match.id, 'home', e.target.value)}
-                      disabled={isFinished || !isPhaseActive}
-                      placeholder="0"
-                      className="w-16 h-16 text-3xl font-bold text-center rounded-lg border-2 border-brasil-verde focus:outline-none focus:border-brasil-azul disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    />
-                    <p className="text-2xl font-bold text-brasil-verde">x</p>
-                    <input
-                      type="number"
-                      min="0"
-                      max="9"
-                      value={bet?.away ?? ''}
-                      onChange={(e) => handleBetChange(match.id, 'away', e.target.value)}
-                      disabled={isFinished || !isPhaseActive}
-                      placeholder="0"
-                      className="w-16 h-16 text-3xl font-bold text-center rounded-lg border-2 border-brasil-verde focus:outline-none focus:border-brasil-azul disabled:bg-gray-200 disabled:cursor-not-allowed"
-                    />
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex gap-2 justify-center md:justify-end">
-                    {isFinished ? (
-                      <div className="flex items-center gap-2 text-gray-600">
-                        <Lock className="w-5 h-5" />
-                        <span className="text-sm font-bold">Encerrado</span>
+                return (
+                  <div
+                    key={match.id}
+                    className="bg-white rounded-xl shadow-lg p-4 md:p-6 hover:shadow-xl transition mb-4"
+                  >
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                      {/* Match Info */}
+                      <div className="text-center">
+                        <div className="flex flex-col items-center gap-2">
+                          <p className="text-sm text-gray-600">
+                            {new Date(match.date.seconds * 1000).toLocaleDateString('pt-BR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })}
+                          </p>
+                          <p className="text-xl font-bold text-brasil-azul">
+                            {match.homeTeam}
+                          </p>
+                          <p className="text-xl font-bold text-brasil-azul">
+                            vs
+                          </p>
+                          <p className="text-xl font-bold text-brasil-azul">
+                            {match.awayTeam}
+                          </p>
+                        </div>
                       </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => handleSaveBet(match.id)}
-                          disabled={saving || !isPhaseActive}
-                          className="bg-brasil-verde text-white px-4 py-2 rounded-lg font-bold hover:bg-brasil-azul transition disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {bet?.id ? '✓ Atualizar' : '+ Salvar'}
-                        </button>
-                        {bet?.id && (
-                          <button
-                            onClick={() => handleDeleteBet(match.id)}
-                            disabled={saving}
-                            className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 transition disabled:opacity-50"
-                          >
-                            ✕
-                          </button>
+
+                      {/* Betting Inputs */}
+                      <div className="flex justify-center items-center gap-3">
+                        <input
+                          type="number"
+                          min="0"
+                          max="9"
+                          value={bet?.home ?? ''}
+                          onChange={(e) => handleBetChange(match.id, 'home', e.target.value)}
+                          disabled={isFinished || !canBet}
+                          placeholder="0"
+                          className="w-16 h-16 text-3xl font-bold text-center rounded-lg border-2 border-brasil-verde focus:outline-none focus:border-brasil-azul disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        />
+                        <p className="text-2xl font-bold text-brasil-verde">x</p>
+                        <input
+                          type="number"
+                          min="0"
+                          max="9"
+                          value={bet?.away ?? ''}
+                          onChange={(e) => handleBetChange(match.id, 'away', e.target.value)}
+                          disabled={isFinished || !canBet}
+                          placeholder="0"
+                          className="w-16 h-16 text-3xl font-bold text-center rounded-lg border-2 border-brasil-verde focus:outline-none focus:border-brasil-azul disabled:bg-gray-200 disabled:cursor-not-allowed"
+                        />
+                      </div>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-2 justify-center md:justify-end">
+                        {isFinished ? (
+                          <div className="flex items-center gap-2 text-gray-600">
+                            <Lock className="w-5 h-5" />
+                            <span className="text-sm font-bold">Encerrado</span>
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleSaveBet(match.id)}
+                              disabled={saving || !canBet}
+                              className="bg-brasil-verde text-white px-4 py-2 rounded-lg font-bold hover:bg-brasil-azul transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {bet?.id ? '✓ Atualizar' : '+ Salvar'}
+                            </button>
+                            {bet?.id && (
+                              <button
+                                onClick={() => handleDeleteBet(match.id)}
+                                disabled={saving}
+                                className="bg-red-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-600 transition disabled:opacity-50"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </>
                         )}
-                      </>
+                      </div>
+                    </div>
+
+                    {/* Result Display */}
+                    {isFinished && (
+                      <div className="mt-4 pt-4 border-t-2 border-gray-200 text-center">
+                        <p className="text-sm text-gray-600 mb-2">Resultado Final</p>
+                        <p className="text-2xl font-bold text-brasil-verde">
+                          {match.homeGoals} x {match.awayGoals}
+                        </p>
+                      </div>
                     )}
                   </div>
-                </div>
-
-                {/* Result Display */}
-                {isFinished && (
-                  <div className="mt-4 pt-4 border-t-2 border-gray-200 text-center">
-                    <p className="text-sm text-gray-600 mb-2">Resultado Final</p>
-                    <p className="text-2xl font-bold text-brasil-verde">
-                      {match.homeGoals} x {match.awayGoals}
-                    </p>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          ))}
         </div>
       ) : (
         <div className="text-center py-12">

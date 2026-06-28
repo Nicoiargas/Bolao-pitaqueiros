@@ -178,37 +178,67 @@ function MatchCard({
         {/* Resultado */}
         <Col>
           {m.status === 'finished' && !isEditingResult ? (
-            <Space size={4}>
-              <Tag color="blue" style={{ fontSize: 15, padding: '3px 14px', fontWeight: 700 }}>
-                {m.homeGoals} × {m.awayGoals}
-              </Tag>
-              <Button size="small" icon={<EditOutlined />} type="text"
-                title="Editar resultado" onClick={() => onOpenResultEdit(m.id)}
-                style={{ color: '#aaa' }}
-              />
+            <Space size={4} direction="vertical" align="end">
+              <Space size={4}>
+                <Tag color="blue" style={{ fontSize: 15, padding: '3px 14px', fontWeight: 700 }}>
+                  {m.homeGoals} × {m.awayGoals}
+                </Tag>
+                <Button size="small" icon={<EditOutlined />} type="text"
+                  title="Editar resultado" onClick={() => onOpenResultEdit(m.id)}
+                  style={{ color: '#aaa' }}
+                />
+              </Space>
+              {isKnockout && m.homeGoals === m.awayGoals && m.penaltyWinner && (
+                <Tag color="purple" style={{ fontSize: 11 }}>🥅 Pen. {m.penaltyWinner}</Tag>
+              )}
             </Space>
           ) : (
-            <Space>
-              <InputNumber
-                min={0} max={99} value={r.home} controls={false}
-                onChange={v => onSetResult(m.id, 'home', v)}
-                style={{ width: 52, textAlign: 'center', fontWeight: 700 }}
-              />
-              <Text strong style={{ color: '#008B46' }}>×</Text>
-              <InputNumber
-                min={0} max={99} value={r.away} controls={false}
-                onChange={v => onSetResult(m.id, 'away', v)}
-                style={{ width: 52, textAlign: 'center', fontWeight: 700 }}
-              />
-              <Button type="primary" icon={<CheckOutlined />} size="small"
-                onClick={() => isEditingResult ? onSaveAndClose(m.id) : onSave(m.id)}
-              >
-                Salvar
-              </Button>
-              {isEditingResult && (
-                <Button size="small" icon={<CloseOutlined />} onClick={() => onCancelResultEdit(m.id)}>
-                  Cancelar
+            <Space direction="vertical" size={8}>
+              <Space>
+                <InputNumber
+                  min={0} max={99} value={r.home} controls={false}
+                  onChange={v => onSetResult(m.id, 'home', v)}
+                  style={{ width: 52, textAlign: 'center', fontWeight: 700 }}
+                />
+                <Text strong style={{ color: '#008B46' }}>×</Text>
+                <InputNumber
+                  min={0} max={99} value={r.away} controls={false}
+                  onChange={v => onSetResult(m.id, 'away', v)}
+                  style={{ width: 52, textAlign: 'center', fontWeight: 700 }}
+                />
+                <Button type="primary" icon={<CheckOutlined />} size="small"
+                  onClick={() => isEditingResult ? onSaveAndClose(m.id) : onSave(m.id)}
+                >
+                  Salvar
                 </Button>
+                {isEditingResult && (
+                  <Button size="small" icon={<CloseOutlined />} onClick={() => onCancelResultEdit(m.id)}>
+                    Cancelar
+                  </Button>
+                )}
+              </Space>
+              {isKnockout && r.home !== null && r.away !== null && r.home === r.away && (
+                <Space size={4} align="center">
+                  <Text style={{ fontSize: 12, color: '#666' }}>🥅 Pênaltis:</Text>
+                  <Button
+                    size="small"
+                    type={r.penaltyWinner === m.homeTeam ? 'primary' : 'default'}
+                    style={r.penaltyWinner === m.homeTeam ? { background: '#531dab', borderColor: '#531dab' } : {}}
+                    onClick={() => onSetResult(m.id, 'penaltyWinner',
+                      r.penaltyWinner === m.homeTeam ? null : m.homeTeam)}
+                  >
+                    {m.homeTeam}
+                  </Button>
+                  <Button
+                    size="small"
+                    type={r.penaltyWinner === m.awayTeam ? 'primary' : 'default'}
+                    style={r.penaltyWinner === m.awayTeam ? { background: '#531dab', borderColor: '#531dab' } : {}}
+                    onClick={() => onSetResult(m.id, 'penaltyWinner',
+                      r.penaltyWinner === m.awayTeam ? null : m.awayTeam)}
+                  >
+                    {m.awayTeam}
+                  </Button>
+                </Space>
               )}
             </Space>
           )}
@@ -276,7 +306,7 @@ function MatchManager() {
       allMatches.forEach(m => { if (byPhase[m.phaseId]) byPhase[m.phaseId].push(m); });
       setMatchesByPhase(byPhase);
       const updated = {};
-      allMatches.forEach(m => { updated[m.id] = { home: m.homeGoals ?? 0, away: m.awayGoals ?? 0 }; });
+      allMatches.forEach(m => { updated[m.id] = { home: m.homeGoals ?? 0, away: m.awayGoals ?? 0, penaltyWinner: m.penaltyWinner ?? null }; });
       setResults(updated);
     } catch { message.error('Erro ao recarregar dados'); }
   }, []); // eslint-disable-line
@@ -305,8 +335,9 @@ function MatchManager() {
   const onSave = useCallback(async (matchId) => {
     const r = resultsRef.current[matchId];
     if (!r || r.home == null || r.away == null) { message.warning('Preencha ambos os placares'); return; }
+    const penaltyWinner = (r.home != null && r.away != null && r.home === r.away) ? (r.penaltyWinner ?? null) : null;
     try {
-      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
+      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away), penaltyWinner);
       await recalculateAllPoints();
       message.success('Resultado salvo e pontuação atualizada!');
       silentRefreshRef.current();
@@ -316,8 +347,9 @@ function MatchManager() {
   const onSaveAndClose = useCallback(async (matchId) => {
     const r = resultsRef.current[matchId];
     if (!r || r.home == null || r.away == null) { message.warning('Preencha ambos os placares'); return; }
+    const penaltyWinner = (r.home != null && r.away != null && r.home === r.away) ? (r.penaltyWinner ?? null) : null;
     try {
-      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away));
+      await updateMatchResult(matchId, parseInt(r.home), parseInt(r.away), penaltyWinner);
       await recalculateAllPoints();
       message.success('Resultado salvo e pontuação atualizada!');
       onCancelResultEdit(matchId);
@@ -451,12 +483,20 @@ function MatchManager() {
         if ((mm = patPerd.exec(name))) {
           const ref = matchNumberMap[parseInt(mm[1])];
           if (!ref || ref.status !== 'finished') return null;
-          return ref.homeGoals > ref.awayGoals ? ref.awayTeam : ref.awayGoals > ref.homeGoals ? ref.homeTeam : null;
+          if (ref.homeGoals > ref.awayGoals) return ref.awayTeam;
+          if (ref.awayGoals > ref.homeGoals) return ref.homeTeam;
+          // empate: perdedor é quem não ganhou nos pênaltis
+          if (ref.penaltyWinner === ref.homeTeam) return ref.awayTeam;
+          if (ref.penaltyWinner === ref.awayTeam) return ref.homeTeam;
+          return null;
         }
         if ((mm = patVenc.exec(name))) {
           const ref = matchNumberMap[parseInt(mm[1])];
           if (!ref || ref.status !== 'finished') return null;
-          return ref.homeGoals > ref.awayGoals ? ref.homeTeam : ref.awayGoals > ref.homeGoals ? ref.awayTeam : null;
+          if (ref.homeGoals > ref.awayGoals) return ref.homeTeam;
+          if (ref.awayGoals > ref.homeGoals) return ref.awayTeam;
+          // empate: vencedor é quem ganhou nos pênaltis
+          return ref.penaltyWinner ?? null;
         }
         return undefined;
       };

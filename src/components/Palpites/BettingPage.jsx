@@ -82,6 +82,7 @@ function BettingPage({ user }) {
   const [savingAll, setSavingAll]         = useState(false);
   const [groupFilter, setGroupFilter]     = useState('Todos');
   const [positionLabels, setPositionLabels] = useState({});
+  const [allMatchesOrdered, setAllMatchesOrdered] = useState([]);
   const scrollRef = useRef(null);
 
   useEffect(() => { loadPhases(); }, [user]);
@@ -97,10 +98,18 @@ function BettingPage({ user }) {
     }
   }, [matches, loading]);
 
+  const KNOCKOUT_PHASES = ['Round of 32', 'Oitavas', 'Quartas', 'Semis', 'Final'];
+
   const isPhaseOpen = (closingDate) => new Date() < toDate(closingDate);
 
   const isMatchOpen = (match, phase) => {
     if (!phase) return false;
+    if (KNOCKOUT_PHASES.includes(phase.name)) {
+      const matchDate = toDate(match.date);
+      const deadline = new Date(matchDate);
+      deadline.setHours(12, 0, 0, 0);
+      return new Date() < deadline;
+    }
     return new Date() < toDate(phase.closingDate);
   };
 
@@ -112,6 +121,7 @@ function BettingPage({ user }) {
       const [data, allMatches] = await Promise.all([getAllPhases(), getAllMatches()]);
       const sorted = [...data].sort((a, b) => new Date(toDate(a.closingDate)) - new Date(toDate(b.closingDate)));
       setPhases(sorted);
+      setAllMatchesOrdered([...allMatches].sort((a, b) => toDate(a.date) - toDate(b.date)));
 
       // Prioridade 1: fase que tem jogos hoje → abre lá e rola até o primeiro
       const today = dayjs().format('YYYY-MM-DD');
@@ -243,12 +253,9 @@ function BettingPage({ user }) {
 
   const unsentCount = matches.filter(m => !initialBets[m.id]?.id && isMatchOpen(m, currentPhase)).length;
 
-  // Para Grupos: aberta se algum jogo visível ainda aceita palpites
-  const phaseOpen = currentPhase && (
-    currentPhase.name === 'Grupos'
-      ? filteredMatches.some(m => m.status !== 'finished' && isMatchOpen(m, currentPhase))
-      : isPhaseOpen(currentPhase.closingDate)
-  );
+  // Grupos e mata-mata: aberta se algum jogo visível ainda aceita palpites
+  const phaseOpen = currentPhase &&
+    filteredMatches.some(m => m.status !== 'finished' && isMatchOpen(m, currentPhase));
 
   // dirtyCount considera apenas jogos com rodada ainda aberta
   const openDirtyCount = filteredMatches.filter(m =>
@@ -286,6 +293,7 @@ function BettingPage({ user }) {
     const finished = match.status === 'finished';
     const canBet  = !finished && isMatchOpen(match, currentPhase);
     const dirty   = isDirty(match.id);
+    const matchNumber = allMatchesOrdered.length > 0 ? allMatchesOrdered.findIndex(m => m.id === match.id) + 1 : 0;
     return (
       <Card
         style={{
@@ -301,6 +309,7 @@ function BettingPage({ user }) {
               <Space size={6}>
                 {match.group && <Tag color="blue" style={{ fontSize: 11 }}>Grupo {match.group}</Tag>}
                 <Text type="secondary" style={{ fontSize: 12 }}>
+                  {matchNumber > 0 && <span style={{ opacity: 0.45, fontSize: 10, marginRight: 3 }}>#{matchNumber} ·</span>}
                   {dayjs(toDate(match.date)).format('DD/MM · HH:mm')}
                 </Text>
                 {dirty && <Tag color="warning" style={{ fontSize: 11 }}>Não salvo</Tag>}
@@ -479,8 +488,8 @@ function BettingPage({ user }) {
         </div>
       )}
 
-      {/* Phase status */}
-      {currentPhase && (
+      {/* Phase status — apenas para Grupos */}
+      {currentPhase && !KNOCKOUT_PHASES.includes(currentPhase.name) && (
         <Alert
           type={phaseOpen ? 'success' : 'error'}
           showIcon
@@ -543,16 +552,55 @@ function BettingPage({ user }) {
           {(() => {
             const today = dayjs().format('YYYY-MM-DD');
             let firstTodayFound = false;
-            return filteredMatches.map(match => {
-              const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
-              const isScrollTarget = isToday && !firstTodayFound;
-              if (isScrollTarget) firstTodayFound = true;
-              return (
-                <div key={match.id} ref={isScrollTarget ? scrollRef : null} style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}>
-                  {renderMatchCard(match)}
+            const isKnockout = KNOCKOUT_PHASES.includes(currentPhase?.name);
+
+            if (!isKnockout) {
+              return filteredMatches.map(match => {
+                const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
+                const isScrollTarget = isToday && !firstTodayFound;
+                if (isScrollTarget) firstTodayFound = true;
+                return (
+                  <div key={match.id} ref={isScrollTarget ? scrollRef : null} style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}>
+                    {renderMatchCard(match)}
+                  </div>
+                );
+              });
+            }
+
+            // Mata-mata: agrupa por dia e exibe label de fechamento
+            const dayGroups = {};
+            [...filteredMatches]
+              .sort((a, b) => toDate(a.date) - toDate(b.date))
+              .forEach(match => {
+                const dayKey = dayjs(toDate(match.date)).format('YYYY-MM-DD');
+                if (!dayGroups[dayKey]) dayGroups[dayKey] = [];
+                dayGroups[dayKey].push(match);
+              });
+
+            return Object.entries(dayGroups).map(([dayKey, dayMatches]) => (
+              <div key={dayKey}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '16px 0 10px' }}>
+                  <Text strong style={{ color: '#0033A0', textTransform: 'capitalize', fontSize: 14 }}>
+                    {dayjs(dayKey).format('dddd, DD/MM')}
+                  </Text>
+                  <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
+                    Palpites fecham às 12:00
+                  </Tag>
                 </div>
-              );
-            });
+                <Space direction="vertical" style={{ width: '100%' }} size={12}>
+                  {dayMatches.map(match => {
+                    const isToday = dayKey === today;
+                    const isScrollTarget = isToday && !firstTodayFound;
+                    if (isScrollTarget) firstTodayFound = true;
+                    return (
+                      <div key={match.id} ref={isScrollTarget ? scrollRef : null} style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}>
+                        {renderMatchCard(match)}
+                      </div>
+                    );
+                  })}
+                </Space>
+              </div>
+            ));
           })()}
         </Space>
       )}
