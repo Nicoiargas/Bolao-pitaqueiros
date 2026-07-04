@@ -94,7 +94,7 @@ function UserBetChip({ user, bet, match, basePoints }) {
           {finished && (
             pts > 0 ? (
               <Tag color="success" style={{ margin: 0, fontSize: 11, fontWeight: 700, lineHeight: '18px' }}>
-                +{pts % 1 === 0 ? pts : pts.toFixed(1)}{isPenBonus ? ' ×2' : ''}
+                +{pts % 1 === 0 ? pts : pts.toFixed(1)}{isPenBonus ? ' 🥅' : ''}
               </Tag>
             ) : (
               <Tag color="default" style={{ margin: 0, fontSize: 11, lineHeight: '18px' }}>0 pts</Tag>
@@ -219,11 +219,12 @@ function PitacoGeral() {
   const [users, setUsers]               = useState([]);
   const [phaseMap, setPhaseMap]         = useState({});
   const [selectedPhaseId, setSelectedPhaseId] = useState(null);
-  const scrollRef   = useRef(null);
-  const hasScrolled = useRef(false);
+  const scrollRef      = useRef(null);
+  const hasScrolled    = useRef(false);
+  const lastAutoPhase  = useRef(null);  // última fase auto-selecionada pelo sistema
 
-  useEffect(() => {
-    Promise.all([
+  const loadData = (isFirstLoad = false) => {
+    return Promise.all([
       getAllMatches(),
       getAllPhases(),
       getAllBets(),
@@ -248,8 +249,6 @@ function PitacoGeral() {
       });
       setBetsByMatch(bm);
 
-      // Seleciona a fase mais recente com pelo menos um jogo visível
-      const now = new Date();
       const phaseById = Object.fromEntries(allPhases.map(p => [p.id, p]));
       const matchesByPhaseId = {};
       allMatches.forEach(m => {
@@ -261,12 +260,34 @@ function PitacoGeral() {
         (matchesByPhaseId[p.id] ?? []).some(m => isMatchVisible(m, phaseById[m.phaseId]))
       );
 
-      if (withVisible.length > 0) {
-        setSelectedPhaseId(withVisible[withVisible.length - 1].id);
-      } else {
-        setSelectedPhaseId(sorted[0]?.id ?? null);
+      const mostRecent = withVisible.length > 0
+        ? withVisible[withVisible.length - 1].id
+        : sorted[0]?.id ?? null;
+
+      // Avança fase automaticamente no primeiro load ou quando uma fase nova ficar disponível
+      if (isFirstLoad || mostRecent !== lastAutoPhase.current) {
+        setSelectedPhaseId(mostRecent);
       }
-    }).catch(console.error).finally(() => setLoading(false));
+      lastAutoPhase.current = mostRecent;
+    }).catch(console.error);
+  };
+
+  useEffect(() => {
+    loadData(true).finally(() => setLoading(false));
+
+    // Recarrega quando o usuário volta para a aba
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadData(false);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    // Recarrega a cada 2 minutos para detectar jogos que passaram do meio-dia
+    const interval = setInterval(() => loadData(false), 2 * 60 * 1000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      clearInterval(interval);
+    };
   }, []);
 
   const matchesByPhase = useMemo(() => {

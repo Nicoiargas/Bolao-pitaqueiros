@@ -1,5 +1,4 @@
 const CORRECT_SCORE_MULTIPLIER = 3;
-const PENALTY_WINNER_MULTIPLIER = 2;
 
 export const PHASES = ['Grupos', 'Round of 32', 'Oitavas', 'Quartas', 'Semis', 'Final'];
 
@@ -21,7 +20,7 @@ export function calculatePoints(userBet, actualMatch, basePoints) {
       userBet.penaltyWinner && actualMatch.penaltyWinner &&
       userBet.penaltyWinner === actualMatch.penaltyWinner
     ) {
-      return exactPoints * PENALTY_WINNER_MULTIPLIER;
+      return exactPoints + basePoints;
     }
     return exactPoints;
   }
