@@ -165,6 +165,28 @@ export async function deleteBet(betId) {
   if (error) throw error;
 }
 
+export async function logBetAttempt(userId, matchId, homeGoals, awayGoals, success, failureReason = null) {
+  await supabase.from('bet_logs').insert({
+    user_id:        userId,
+    match_id:       matchId,
+    home_goals:     homeGoals,
+    away_goals:     awayGoals,
+    success,
+    failure_reason: failureReason,
+    attempt_at:     new Date().toISOString(),
+  });
+}
+
+export async function getBetLogs() {
+  const { data, error } = await supabase
+    .from('bet_logs')
+    .select('*, users(display_name, email)')
+    .order('attempt_at', { ascending: false })
+    .limit(300);
+  if (error) throw error;
+  return data;
+}
+
 // ── Ranking ──────────────────────────────────────────────────────────────────
 
 export async function getPhaseCompletionStats() {

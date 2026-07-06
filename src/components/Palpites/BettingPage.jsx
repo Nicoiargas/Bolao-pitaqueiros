@@ -7,7 +7,7 @@ import { TrophyOutlined, LockOutlined, SaveOutlined, EditOutlined } from '@ant-d
 import dayjs from 'dayjs';
 import {
   getAllPhases, getAllMatches, getMatchesByPhase, getBetsByUser,
-  placeBet, updateBet,
+  placeBet, updateBet, logBetAttempt,
 } from '../../services/gameService';
 import { calculatePoints } from '../../services/pointsService';
 import FlagImage from '../FlagImage';
@@ -203,19 +203,34 @@ function BettingPage({ user }) {
   const dirtyCount = matches.filter(m => isDirty(m.id) && bets[m.id]?.home !== null && bets[m.id]?.away !== null).length;
 
   const handleSaveAll = async () => {
-    const toSave = matches.filter(m => isDirty(m.id) && isMatchOpen(m, currentPhase));
-    const incomplete = toSave.filter(m => bets[m.id]?.home === null || bets[m.id]?.away === null);
-    const complete   = toSave.filter(m => bets[m.id]?.home !== null && bets[m.id]?.away !== null);
+    const allDirtyComplete = matches.filter(m =>
+      isDirty(m.id) && bets[m.id]?.home !== null && bets[m.id]?.away !== null
+    );
+    const toSave  = allDirtyComplete.filter(m =>  isMatchOpen(m, currentPhase));
+    const blocked = allDirtyComplete.filter(m => !isMatchOpen(m, currentPhase));
 
-    if (complete.length === 0) {
-      message.info('Nenhuma alteração para salvar');
+    // Logar tentativas bloqueadas por prazo encerrado
+    for (const match of blocked) {
+      const bet = bets[match.id];
+      logBetAttempt(user.uid, match.id, bet.home, bet.away, false, 'Prazo encerrado').catch(() => {});
+    }
+
+    if (blocked.length > 0) {
+      message.warning({
+        content: `⚠️ ${blocked.length} palpite${blocked.length !== 1 ? 's' : ''} não ${blocked.length !== 1 ? 'foram salvos' : 'foi salvo'} — prazo encerrado`,
+        duration: 6,
+      });
+    }
+
+    if (toSave.length === 0) {
+      if (blocked.length === 0) message.info('Nenhuma alteração para salvar');
       return;
     }
 
     setSavingAll(true);
     try {
       const updatedBets = { ...bets };
-      for (const match of complete) {
+      for (const match of toSave) {
         const bet = bets[match.id];
         if (bet.id) {
           await updateBet(bet.id, bet.home, bet.away, bet.penaltyWinner ?? null);
@@ -223,12 +238,13 @@ function BettingPage({ user }) {
           const newId = await placeBet(user.uid, match.id, bet.home, bet.away, selectedPhaseId, bet.penaltyWinner ?? null);
           updatedBets[match.id] = { ...bet, id: newId };
         }
+        logBetAttempt(user.uid, match.id, bet.home, bet.away, true).catch(() => {});
       }
       setBets(updatedBets);
       setInitialBets(updatedBets);
-      message.success(`${complete.length} palpite${complete.length !== 1 ? 's' : ''} salvos!`);
+      message.success(`${toSave.length} palpite${toSave.length !== 1 ? 's' : ''} salvos!`);
     } catch {
-      message.error('Erro ao salvar palpites');
+      message.error('Erro ao salvar palpites. Tente novamente.');
     } finally {
       setSavingAll(false);
     }

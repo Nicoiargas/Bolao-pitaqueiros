@@ -3,14 +3,14 @@ import { Card, Tabs, Typography, Space, Button, Alert, List, Tag, Table, Collaps
 import {
   PlusOutlined, EditOutlined, SettingOutlined,
   ThunderboltOutlined, CheckCircleOutlined, BugOutlined, ReloadOutlined, TrophyOutlined,
-  DownloadOutlined,
+  DownloadOutlined, FileTextOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import PhaseManager from './PhaseManager';
 import MatchManager from './MatchManager';
 import GlobalBetManager from './GlobalBetManager';
 import {
-  recalculateAllPoints, getRanking, getAllBets, getAllMatches, getAllPhases,
+  recalculateAllPoints, getRanking, getAllBets, getAllMatches, getAllPhases, getBetLogs,
 } from '../../services/gameService';
 import { seedWorldCup2026 } from '../../services/seedMatches';
 import { calculatePoints } from '../../services/pointsService';
@@ -293,6 +293,87 @@ function ExportPanel() {
   );
 }
 
+function BetLogPanel() {
+  const [logs, setLogs]       = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    try { setLogs(await getBetLogs()); }
+    catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  if (loading) return <div style={{ textAlign: 'center', padding: 40 }}><Spin /></div>;
+
+  const columns = [
+    {
+      title: 'Horário (BRT)',
+      dataIndex: 'attempt_at',
+      key: 'time',
+      width: 160,
+      render: v => {
+        const brt = new Date(new Date(v).getTime() - 3 * 60 * 60 * 1000);
+        return brt.toISOString().replace('T', ' ').slice(0, 19);
+      },
+    },
+    {
+      title: 'Usuário',
+      key: 'user',
+      render: (_, r) => r.users?.display_name ?? r.user_id,
+    },
+    {
+      title: 'Palpite',
+      key: 'bet',
+      render: (_, r) => `${r.home_goals ?? '?'} × ${r.away_goals ?? '?'}`,
+    },
+    {
+      title: 'Status',
+      key: 'status',
+      width: 130,
+      render: (_, r) => r.success
+        ? <Tag color="success">Salvo</Tag>
+        : <Tag color="error">Não salvo</Tag>,
+    },
+    {
+      title: 'Motivo',
+      dataIndex: 'failure_reason',
+      key: 'reason',
+      render: v => v ? <Text type="danger">{v}</Text> : <Text type="secondary">—</Text>,
+    },
+  ];
+
+  const bloqueados = logs.filter(l => !l.success).length;
+
+  return (
+    <div>
+      <Space style={{ marginBottom: 12, width: '100%', justifyContent: 'space-between' }}>
+        <Space>
+          <Text strong>{logs.length} tentativa(s)</Text>
+          {bloqueados > 0 && <Tag color="error">{bloqueados} bloqueada(s)</Tag>}
+        </Space>
+        <Button icon={<ReloadOutlined />} size="small" onClick={load}>Atualizar</Button>
+      </Space>
+      {bloqueados > 0 && (
+        <Alert
+          type="warning" showIcon style={{ marginBottom: 12, borderRadius: 8 }}
+          message={`${bloqueados} palpite(s) tentado(s) após o prazo`}
+        />
+      )}
+      <Table
+        size="small"
+        dataSource={logs.map(l => ({ ...l, key: l.id }))}
+        columns={columns}
+        pagination={{ pageSize: 50 }}
+        scroll={{ y: 400 }}
+        rowClassName={r => !r.success ? 'ant-table-row-danger' : ''}
+      />
+    </div>
+  );
+}
+
 function AdminPanel() {
   const [activeTab, setActiveTab]         = useState('fases');
   const [recalcLoading, setRecalcLoading] = useState(false);
@@ -319,6 +400,7 @@ function AdminPanel() {
     { key: 'jogos',   label: <Space><EditOutlined />Jogos</Space>,           children: <MatchManager /> },
     { key: 'global',  label: <Space><TrophyOutlined />Palpite Global</Space>, children: <GlobalBetManager /> },
     { key: 'export',  label: <Space><DownloadOutlined />Exportar</Space>,    children: <ExportPanel /> },
+    { key: 'logs',    label: <Space><FileTextOutlined />Log de Palpites</Space>, children: <BetLogPanel /> },
     { key: 'diag',    label: <Space><BugOutlined />Diagnóstico</Space>,      children: <DiagnosticPanel /> },
   ];
 
