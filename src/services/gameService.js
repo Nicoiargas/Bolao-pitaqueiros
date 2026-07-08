@@ -24,6 +24,7 @@ const mapMatch = r => r ? ({
   penaltyWinner: r.penalty_winner ?? null,
   date:          r.date,
   status:        r.status,
+  closingTime:   r.closing_time ?? null,
   createdAt:     r.created_at,
 }) : null;
 
@@ -118,6 +119,18 @@ export async function updateMatchTeams(matchId, homeTeam, awayTeam) {
   const { error } = await supabase.from('matches')
     .update({ home_team: homeTeam, away_team: awayTeam })
     .eq('id', matchId);
+  if (error) throw error;
+}
+
+export async function updateMatchClosingTime(matchId, closingTime) {
+  const val = closingTime instanceof Date ? closingTime.toISOString() : (closingTime ?? null);
+  const { error } = await supabase.from('matches').update({ closing_time: val }).eq('id', matchId);
+  if (error) throw error;
+}
+
+export async function updateMatchDate(matchId, date) {
+  const val = date instanceof Date ? date.toISOString() : date;
+  const { error } = await supabase.from('matches').update({ date: val }).eq('id', matchId);
   if (error) throw error;
 }
 

@@ -112,6 +112,7 @@ function BettingPage({ user }) {
 
   const isMatchOpen = (match, phase) => {
     if (!phase) return false;
+    if (match.closingTime) return new Date() < new Date(match.closingTime);
     if (KNOCKOUT_PHASES.includes(phase.name)) {
       const matchDate = toDate(match.date);
       const matchInBrt = new Date(matchDate.getTime() + BRT_OFFSET_MS);
@@ -613,9 +614,22 @@ function BettingPage({ user }) {
                   <Text strong style={{ color: '#0033A0', textTransform: 'capitalize', fontSize: 14 }}>
                     {dayjs(dayKey).format('dddd, DD/MM')}
                   </Text>
-                  <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
-                    {`Palpites fecham às ${getMatchBrtDateStr(dayMatches[0].date) === EXCEPTION_DATE_BRT ? 13 : 12}:00 (horário de Brasília)`}
-                  </Tag>
+                  {(() => {
+                    const custom = dayMatches[0].closingTime;
+                    if (custom) {
+                      return (
+                        <Tag color="purple" style={{ fontSize: 11, margin: 0 }}>
+                          ⏰ Palpites fecham em {dayjs(custom).format('HH:mm')} (horário de Brasília)
+                        </Tag>
+                      );
+                    }
+                    const closingH = getMatchBrtDateStr(dayMatches[0].date) === EXCEPTION_DATE_BRT ? 13 : 12;
+                    return (
+                      <Tag color="orange" style={{ fontSize: 11, margin: 0 }}>
+                        Palpites fecham às {closingH}:00 (horário de Brasília)
+                      </Tag>
+                    );
+                  })()}
                 </div>
                 <Space direction="vertical" style={{ width: '100%' }} size={12}>
                   {dayMatches.map(match => {

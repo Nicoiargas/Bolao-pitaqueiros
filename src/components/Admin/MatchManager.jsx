@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   Tabs, Button, InputNumber, Select, Space, Tag, Typography,
-  App, Empty, Spin, Row, Col, Segmented, Card, Collapse,
+  App, Empty, Spin, Row, Col, Segmented, Card, Collapse, DatePicker,
 } from 'antd';
 import {
   CheckOutlined, LockOutlined, TrophyOutlined, EditOutlined,
-  CloseOutlined, ThunderboltOutlined,
+  CloseOutlined, ThunderboltOutlined, ClockCircleOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import {
   getAllPhases, getAllMatches, updateMatchResult, updateMatchTeams, recalculateAllPoints,
+  updateMatchClosingTime, updateMatchDate,
 } from '../../services/gameService';
 import FlagImage from '../FlagImage';
 
@@ -88,6 +89,17 @@ function MatchCard({
   onCancelTeamEdit,
   onSetTeamField,
   onSaveTeams,
+  deadlineEdit,
+  onOpenDeadlineEdit,
+  onCancelDeadlineEdit,
+  onSetDeadlineValue,
+  onSaveDeadline,
+  onClearDeadline,
+  dateEdit,
+  onOpenDateEdit,
+  onCancelDateEdit,
+  onSetDateValue,
+  onSaveDate,
 }) {
   const isKnockout = m.group === null;
   const r = result || { home: 0, away: 0 };
@@ -102,9 +114,35 @@ function MatchCard({
       <Row align="middle" gutter={[8, 8]}>
         {/* Times */}
         <Col flex="auto">
-          <Text type="secondary" style={{ fontSize: 11, display: 'block' }}>
-            {dayjs(toDate(m.date)).format('DD/MM · HH:mm')}
-          </Text>
+          {dateEdit !== undefined ? (
+            <Space size={4} align="center" wrap>
+              <DatePicker
+                showTime={{ format: 'HH:mm' }}
+                format="DD/MM HH:mm"
+                value={dateEdit}
+                onChange={(val) => onSetDateValue(m.id, val)}
+                size="small"
+                placeholder="Data e hora do jogo"
+                style={{ width: 165 }}
+              />
+              <Button size="small" type="primary" icon={<CheckOutlined />}
+                onClick={() => onSaveDate(m.id)}>
+                OK
+              </Button>
+              <Button size="small" icon={<CloseOutlined />}
+                onClick={() => onCancelDateEdit(m.id)} />
+            </Space>
+          ) : (
+            <Space size={4} align="center">
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                {dayjs(toDate(m.date)).format('DD/MM · HH:mm')}
+              </Text>
+              <Button size="small" type="text" icon={<EditOutlined />}
+                title="Editar data/hora do jogo" onClick={() => onOpenDateEdit(m)}
+                style={{ color: '#aaa', padding: '0 2px', height: 18 }}
+              />
+            </Space>
+          )}
 
           {isKnockout && teamEdit ? (
             <Space direction="vertical" size={4} style={{ marginTop: 6 }}>
@@ -165,6 +203,49 @@ function MatchCard({
                 />
               )}
             </Space>
+          )}
+
+          {/* Prazo de fechamento — apenas mata-mata não finalizado */}
+          {isKnockout && m.status !== 'finished' && (
+            <div style={{ marginTop: 8 }}>
+              {deadlineEdit !== undefined ? (
+                <Space size={4} align="center" wrap>
+                  <DatePicker
+                    showTime={{ format: 'HH:mm' }}
+                    format="DD/MM HH:mm"
+                    value={deadlineEdit}
+                    onChange={(val) => onSetDeadlineValue(m.id, val)}
+                    size="small"
+                    placeholder="Data e hora de fechamento"
+                    style={{ width: 165 }}
+                  />
+                  <Button size="small" type="primary" icon={<CheckOutlined />}
+                    onClick={() => onSaveDeadline(m.id)}>
+                    OK
+                  </Button>
+                  <Button size="small" icon={<CloseOutlined />}
+                    onClick={() => onCancelDeadlineEdit(m.id)} />
+                  {m.closingTime && (
+                    <Button size="small" danger onClick={() => onClearDeadline(m.id)}>
+                      Remover prazo
+                    </Button>
+                  )}
+                </Space>
+              ) : (
+                <Space size={4} align="center">
+                  {m.closingTime
+                    ? <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>⏰ {dayjs(m.closingTime).format('DD/MM HH:mm')}</Tag>
+                    : <Tag style={{ fontSize: 10, margin: 0, color: '#aaa', borderColor: '#d9d9d9' }}>⏰ 12:00 padrão</Tag>}
+                  <Button
+                    size="small" type="text"
+                    icon={<ClockCircleOutlined />}
+                    title="Alterar prazo de fechamento"
+                    onClick={() => onOpenDeadlineEdit(m)}
+                    style={{ color: '#aaa', padding: '0 2px' }}
+                  />
+                </Space>
+              )}
+            </div>
           )}
         </Col>
 
@@ -270,6 +351,17 @@ function MatchTable({ matches, cardProps }) {
           onCancelTeamEdit={cardProps.onCancelTeamEdit}
           onSetTeamField={cardProps.onSetTeamField}
           onSaveTeams={cardProps.onSaveTeams}
+          deadlineEdit={cardProps.deadlineEdits[m.id]}
+          onOpenDeadlineEdit={cardProps.onOpenDeadlineEdit}
+          onCancelDeadlineEdit={cardProps.onCancelDeadlineEdit}
+          onSetDeadlineValue={cardProps.onSetDeadlineValue}
+          onSaveDeadline={cardProps.onSaveDeadline}
+          onClearDeadline={cardProps.onClearDeadline}
+          dateEdit={cardProps.dateEdits[m.id]}
+          onOpenDateEdit={cardProps.onOpenDateEdit}
+          onCancelDateEdit={cardProps.onCancelDateEdit}
+          onSetDateValue={cardProps.onSetDateValue}
+          onSaveDate={cardProps.onSaveDate}
         />
       ))}
     </Space>
@@ -286,15 +378,21 @@ function MatchManager() {
   const [results, setResults]               = useState({});
   const [teamEdits, setTeamEdits]           = useState({});
   const [editingResults, setEditingResults] = useState(new Set());
+  const [deadlineEdits, setDeadlineEdits]   = useState({});
+  const [dateEdits, setDateEdits]           = useState({});
   const [activeGroup, setActiveGroup]       = useState('A');
   const [activeKnockout, setActiveKnockout] = useState('Round of 32');
   const [autoFilling, setAutoFilling]       = useState(false);
 
   // Refs para acessar estado atual dentro de useCallback sem stale closure
-  const resultsRef   = useRef(results);
-  const teamEditsRef = useRef(teamEdits);
-  useEffect(() => { resultsRef.current   = results;   }, [results]);
-  useEffect(() => { teamEditsRef.current = teamEdits; }, [teamEdits]);
+  const resultsRef       = useRef(results);
+  const teamEditsRef     = useRef(teamEdits);
+  const deadlineEditsRef = useRef(deadlineEdits);
+  const dateEditsRef     = useRef(dateEdits);
+  useEffect(() => { resultsRef.current       = results;       }, [results]);
+  useEffect(() => { teamEditsRef.current     = teamEdits;     }, [teamEdits]);
+  useEffect(() => { deadlineEditsRef.current = deadlineEdits; }, [deadlineEdits]);
+  useEffect(() => { dateEditsRef.current     = dateEdits;     }, [dateEdits]);
 
   // silentRefresh: atualiza dados sem setar loading — preserva scroll e foco
   const silentRefresh = useCallback(async () => {
@@ -368,6 +466,62 @@ function MatchManager() {
     } catch { message.error('Erro ao atualizar times'); }
   }, [onCancelTeamEdit]);
 
+  const onOpenDeadlineEdit = useCallback((m) => {
+    const current = m.closingTime ? dayjs(m.closingTime) : null;
+    setDeadlineEdits(prev => ({ ...prev, [m.id]: current }));
+  }, []);
+
+  const onCancelDeadlineEdit = useCallback((matchId) => {
+    setDeadlineEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+  }, []);
+
+  const onSetDeadlineValue = useCallback((matchId, val) => {
+    setDeadlineEdits(prev => ({ ...prev, [matchId]: val }));
+  }, []);
+
+  const onSaveDeadline = useCallback(async (matchId) => {
+    const val = deadlineEditsRef.current[matchId];
+    const iso = val ? val.toISOString() : null;
+    try {
+      await updateMatchClosingTime(matchId, iso);
+      message.success(iso ? 'Prazo de fechamento atualizado!' : 'Prazo removido — padrão 12:00 ativo');
+      setDeadlineEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao atualizar prazo'); }
+  }, []);
+
+  const onClearDeadline = useCallback(async (matchId) => {
+    try {
+      await updateMatchClosingTime(matchId, null);
+      message.success('Prazo removido — padrão 12:00 ativo');
+      setDeadlineEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao remover prazo'); }
+  }, []);
+
+  const onOpenDateEdit = useCallback((m) => {
+    setDateEdits(prev => ({ ...prev, [m.id]: dayjs(toDate(m.date)) }));
+  }, []);
+
+  const onCancelDateEdit = useCallback((matchId) => {
+    setDateEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+  }, []);
+
+  const onSetDateValue = useCallback((matchId, val) => {
+    setDateEdits(prev => ({ ...prev, [matchId]: val }));
+  }, []);
+
+  const onSaveDate = useCallback(async (matchId) => {
+    const val = dateEditsRef.current[matchId];
+    if (!val) { message.warning('Selecione data e hora'); return; }
+    try {
+      await updateMatchDate(matchId, val.toDate());
+      message.success('Data e hora do jogo atualizadas!');
+      setDateEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
+      silentRefreshRef.current();
+    } catch { message.error('Erro ao atualizar data do jogo'); }
+  }, []);
+
   // ── Dados derivados ────────────────────────────────────────────────────────
   const gruposPhase   = phases.find(p => p.name === 'Grupos');
   const gruposMatches = gruposPhase ? (matchesByPhase[gruposPhase.id] || []) : [];
@@ -407,11 +561,17 @@ function MatchManager() {
   // Objeto passado ao MatchTable/MatchCard — contém estado e handlers
   const cardProps = useMemo(() => ({
     results, teamEdits, editingResults, allTeams, positionLabels,
+    deadlineEdits, dateEdits,
     onSetResult, onSave, onSaveAndClose, onOpenResultEdit, onCancelResultEdit,
     onOpenTeamEdit, onCancelTeamEdit, onSetTeamField, onSaveTeams,
+    onOpenDeadlineEdit, onCancelDeadlineEdit, onSetDeadlineValue, onSaveDeadline, onClearDeadline,
+    onOpenDateEdit, onCancelDateEdit, onSetDateValue, onSaveDate,
   }), [results, teamEdits, editingResults, allTeams, positionLabels,
+      deadlineEdits, dateEdits,
       onSetResult, onSave, onSaveAndClose, onOpenResultEdit, onCancelResultEdit,
-      onOpenTeamEdit, onCancelTeamEdit, onSetTeamField, onSaveTeams]);
+      onOpenTeamEdit, onCancelTeamEdit, onSetTeamField, onSaveTeams,
+      onOpenDeadlineEdit, onCancelDeadlineEdit, onSetDeadlineValue, onSaveDeadline, onClearDeadline,
+      onOpenDateEdit, onCancelDateEdit, onSetDateValue, onSaveDate]);
 
   // ── Auto-preencher ─────────────────────────────────────────────────────────
   const handleAutoFill = async () => {
