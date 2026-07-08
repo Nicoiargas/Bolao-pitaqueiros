@@ -4,8 +4,10 @@ import { TrophyOutlined, LockOutlined, ClockCircleOutlined } from '@ant-design/i
 import dayjs from 'dayjs';
 import 'dayjs/locale/pt-br';
 import { getAllMatches, getAllPhases, getAllBets, getRanking } from '../../services/gameService';
+import { getAllGlobalBets, getGlobalResults } from '../../services/globalBetService';
 import { calculatePoints } from '../../services/pointsService';
 import FlagImage from '../FlagImage';
+import GlobalPitacoPanel from './GlobalPitacoPanel';
 
 dayjs.locale('pt-br');
 
@@ -219,6 +221,8 @@ function PitacoGeral() {
   const [users, setUsers]               = useState([]);
   const [phaseMap, setPhaseMap]         = useState({});
   const [selectedPhaseId, setSelectedPhaseId] = useState(null);
+  const [globalBets, setGlobalBets]     = useState([]);
+  const [globalResults, setGlobalResults] = useState(null);
   const scrollRef      = useRef(null);
   const hasScrolled    = useRef(false);
   const lastAutoPhase  = useRef(null);  // última fase auto-selecionada pelo sistema
@@ -229,11 +233,15 @@ function PitacoGeral() {
       getAllPhases(),
       getAllBets(),
       getRanking(),
-    ]).then(([allMatches, allPhases, allBets, allUsers]) => {
+      getAllGlobalBets(),
+      getGlobalResults(),
+    ]).then(([allMatches, allPhases, allBets, allUsers, allGlobalBets, globalRes]) => {
       const pm = Object.fromEntries(allPhases.map(p => [p.id, p]));
       setPhaseMap(pm);
       setMatches(allMatches);
       setUsers(allUsers);
+      setGlobalBets(allGlobalBets);
+      setGlobalResults(globalRes);
 
       const sorted = [...allPhases].sort((a, b) => {
         const ia = PHASE_ORDER.indexOf(a.name);
@@ -347,6 +355,8 @@ function PitacoGeral() {
           </Text>
         </div>
       </div>
+
+      <GlobalPitacoPanel users={users} globalBets={globalBets} globalResults={globalResults} />
 
       {visiblePhases.length === 0 ? (
         <Empty description="Nenhuma fase fechada ainda — os pitacos aparecem aqui após o fechamento." />

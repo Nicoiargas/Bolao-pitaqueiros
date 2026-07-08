@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Card, Form, Input, Button, Select, Alert, Table, Tag, Space, Typography } from 'antd';
-import { TrophyOutlined, CheckCircleOutlined } from '@ant-design/icons';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Card, Form, Checkbox, Button, Select, Alert, Table, Tag, Space, Typography } from 'antd';
+import { TrophyOutlined } from '@ant-design/icons';
 import { getFlagUrl } from '../../services/flags';
 import {
   getGlobalResults, saveGlobalResults, getAllGlobalBets, calcGlobalPoints,
@@ -34,13 +34,28 @@ function GlobalBetManager() {
         setResults(r);
         setBets(b);
         if (r) form.setFieldsValue({
-          champion:      r.champion,
-          topScorer:     r.topScorer,
-          topAssists:    r.topAssists,
-          mostGoalsTeam: r.mostGoalsTeam,
+          champion:           r.champion,
+          topScorerVariants:  r.topScorerVariants,
+          topAssistsVariants: r.topAssistsVariants,
+          mostGoalsTeam:      r.mostGoalsTeam,
         });
       });
   }, []);
+
+  // distintos digitados pelos jogadores (com contagem), para o admin escolher quais contam
+  const buildVariantOptions = (field) => {
+    const counts = new Map();
+    bets.forEach(b => {
+      const v = (b[field] || '').trim();
+      if (!v) return;
+      counts.set(v, (counts.get(v) || 0) + 1);
+    });
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([v, count]) => ({ label: `${v} (${count})`, value: v }));
+  };
+  const scorerOptions  = useMemo(() => buildVariantOptions('top_scorer'),  [bets]);
+  const assistsOptions = useMemo(() => buildVariantOptions('top_assists'), [bets]);
 
   const onFinish = async (values) => {
     setError('');
@@ -60,8 +75,8 @@ function GlobalBetManager() {
   const columns = [
     { title: 'Usuário',    dataIndex: 'user_id',        key: 'user',   ellipsis: true },
     { title: '🏆 Campeão', dataIndex: 'champion',       key: 'champ',  render: v => <Tag color={results?.champion === v ? 'success' : 'default'}>{v}</Tag> },
-    { title: '⚽ Artilheiro', dataIndex: 'top_scorer',  key: 'scorer', render: v => <Tag color={results?.topScorer === v ? 'success' : 'default'}>{v}</Tag> },
-    { title: '🎯 Assistente', dataIndex: 'top_assists', key: 'assist', render: v => <Tag color={results?.topAssists === v ? 'success' : 'default'}>{v}</Tag> },
+    { title: '⚽ Artilheiro', dataIndex: 'top_scorer',  key: 'scorer', render: v => <Tag color={results?.topScorerVariants?.includes(v) ? 'success' : 'default'}>{v}</Tag> },
+    { title: '🎯 Assistente', dataIndex: 'top_assists', key: 'assist', render: v => <Tag color={results?.topAssistsVariants?.includes(v) ? 'success' : 'default'}>{v}</Tag> },
     { title: '🔥 + Gols',  dataIndex: 'most_goals_team', key: 'goals', render: v => <Tag color={results?.mostGoalsTeam === v ? 'success' : 'default'}>{v}</Tag> },
     { title: 'Pts',        key: 'pts', render: (_, r) => {
       const pts = calcGlobalPoints(r, results);
@@ -87,11 +102,21 @@ function GlobalBetManager() {
               labelRender={({ value }) => value ? <FlagOption name={value} /> : null}
             />
           </Form.Item>
-          <Form.Item name="topScorer" label="⚽ Maior Artilheiro (+15 pts)">
-            <Input placeholder="Nome do jogador" />
+          <Form.Item
+            name="topScorerVariants"
+            label="⚽ Maior Artilheiro (+15 pts) — marque todas as grafias que devem contar como certas"
+          >
+            {scorerOptions.length > 0
+              ? <Checkbox.Group options={scorerOptions} style={{ display: 'flex', flexDirection: 'column', gap: 4 }} />
+              : <Text type="secondary">Nenhum palpite recebido ainda</Text>}
           </Form.Item>
-          <Form.Item name="topAssists" label="🎯 Maior Assistente (+15 pts)">
-            <Input placeholder="Nome do jogador" />
+          <Form.Item
+            name="topAssistsVariants"
+            label="🎯 Maior Assistente (+15 pts) — marque todas as grafias que devem contar como certas"
+          >
+            {assistsOptions.length > 0
+              ? <Checkbox.Group options={assistsOptions} style={{ display: 'flex', flexDirection: 'column', gap: 4 }} />
+              : <Text type="secondary">Nenhum palpite recebido ainda</Text>}
           </Form.Item>
           <Form.Item name="mostGoalsTeam" label="🔥 Time com Mais Gols (+10 pts)">
             <Select

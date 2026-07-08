@@ -76,6 +76,17 @@ function GlobalBet({ user }) {
     );
   };
 
+  const resultTagVariants = (betValue, variants) => {
+    if (!variants?.length) return <Tag>{betValue || '—'}</Tag>;
+    const hit = variants.includes(betValue);
+    return (
+      <Space size={4}>
+        <Tag color={hit ? 'success' : 'default'}>{betValue || '—'}</Tag>
+        {hit && <CheckCircleOutlined style={{ color: '#52c41a' }} />}
+      </Space>
+    );
+  };
+
   return (
     <Card
       loading={loading}
@@ -108,14 +119,14 @@ function GlobalBet({ user }) {
         <div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             {[
-              { label: '🏆 Campeão',           val: bet.champion,         res: results?.champion,      pts: GLOBAL_BET_POINTS.champion },
-              { label: '⚽ Artilheiro',         val: bet.top_scorer,       res: results?.topScorer,     pts: GLOBAL_BET_POINTS.topScorer },
-              { label: '🎯 Assistente',         val: bet.top_assists,      res: results?.topAssists,    pts: GLOBAL_BET_POINTS.topAssists },
-              { label: '🔥 Time c/ mais gols',  val: bet.most_goals_team,  res: results?.mostGoalsTeam, pts: GLOBAL_BET_POINTS.mostGoalsTeam },
-            ].map(({ label, val, res, pts: p }) => (
+              { label: '🏆 Campeão',           val: bet.champion,        pts: GLOBAL_BET_POINTS.champion,      tag: resultTag(null, bet.champion, results?.champion) },
+              { label: '⚽ Artilheiro',         val: bet.top_scorer,      pts: GLOBAL_BET_POINTS.topScorer,     tag: resultTagVariants(bet.top_scorer, results?.topScorerVariants) },
+              { label: '🎯 Assistente',         val: bet.top_assists,     pts: GLOBAL_BET_POINTS.topAssists,    tag: resultTagVariants(bet.top_assists, results?.topAssistsVariants) },
+              { label: '🔥 Time c/ mais gols',  val: bet.most_goals_team, pts: GLOBAL_BET_POINTS.mostGoalsTeam, tag: resultTag(null, bet.most_goals_team, results?.mostGoalsTeam) },
+            ].map(({ label, pts: p, tag }) => (
               <Card key={label} size="small" style={{ borderRadius: 8 }}>
                 <Text type="secondary" style={{ fontSize: 11 }}>{label} (+{p} pts)</Text>
-                <div style={{ marginTop: 4 }}>{resultTag(label, val, res)}</div>
+                <div style={{ marginTop: 4 }}>{tag}</div>
               </Card>
             ))}
           </div>

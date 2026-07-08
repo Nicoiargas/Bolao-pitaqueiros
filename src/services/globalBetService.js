@@ -41,6 +41,15 @@ export async function saveGlobalBet(userId, { topScorer, topAssists, champion, m
   if (error) throw error;
 }
 
+function parseVariants(rawValue) {
+  if (!rawValue) return [];
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* valor antigo era string simples, não JSON */ }
+  return [rawValue];
+}
+
 export async function getGlobalResults() {
   try {
     const { data } = await supabase.from('config').select('*')
@@ -48,18 +57,18 @@ export async function getGlobalResults() {
     if (!data?.length) return null;
     const map = Object.fromEntries(data.map(r => [r.key, r.value]));
     return {
-      topScorer:     map.global_top_scorer     || null,
-      topAssists:    map.global_top_assists    || null,
-      champion:      map.global_champion       || null,
-      mostGoalsTeam: map.global_most_goals_team || null,
+      topScorerVariants:  parseVariants(map.global_top_scorer),
+      topAssistsVariants: parseVariants(map.global_top_assists),
+      champion:           map.global_champion       || null,
+      mostGoalsTeam:      map.global_most_goals_team || null,
     };
   } catch { return null; }
 }
 
-export async function saveGlobalResults({ topScorer, topAssists, champion, mostGoalsTeam }) {
+export async function saveGlobalResults({ topScorerVariants, topAssistsVariants, champion, mostGoalsTeam }) {
   const { error } = await supabase.from('config').upsert([
-    { key: 'global_top_scorer',      value: topScorer },
-    { key: 'global_top_assists',     value: topAssists },
+    { key: 'global_top_scorer',      value: JSON.stringify(topScorerVariants ?? []) },
+    { key: 'global_top_assists',     value: JSON.stringify(topAssistsVariants ?? []) },
     { key: 'global_champion',        value: champion },
     { key: 'global_most_goals_team', value: mostGoalsTeam },
   ]);
@@ -77,9 +86,9 @@ export async function getAllGlobalBets() {
 export function calcGlobalPoints(bet, results) {
   if (!bet || !results) return 0;
   let pts = 0;
-  if (results.champion      && bet.champion         === results.champion)      pts += GLOBAL_BET_POINTS.champion;
-  if (results.topScorer     && bet.top_scorer        === results.topScorer)     pts += GLOBAL_BET_POINTS.topScorer;
-  if (results.topAssists    && bet.top_assists       === results.topAssists)    pts += GLOBAL_BET_POINTS.topAssists;
-  if (results.mostGoalsTeam && bet.most_goals_team   === results.mostGoalsTeam) pts += GLOBAL_BET_POINTS.mostGoalsTeam;
+  if (results.champion && bet.champion === results.champion) pts += GLOBAL_BET_POINTS.champion;
+  if (results.topScorerVariants?.includes(bet.top_scorer))   pts += GLOBAL_BET_POINTS.topScorer;
+  if (results.topAssistsVariants?.includes(bet.top_assists)) pts += GLOBAL_BET_POINTS.topAssists;
+  if (results.mostGoalsTeam && bet.most_goals_team === results.mostGoalsTeam) pts += GLOBAL_BET_POINTS.mostGoalsTeam;
   return pts;
 }
