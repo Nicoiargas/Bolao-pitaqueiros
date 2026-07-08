@@ -3,12 +3,13 @@ import { Card, Tabs, Typography, Space, Button, Alert, List, Tag, Table, Collaps
 import {
   PlusOutlined, EditOutlined, SettingOutlined,
   ThunderboltOutlined, CheckCircleOutlined, BugOutlined, ReloadOutlined, TrophyOutlined,
-  DownloadOutlined, FileTextOutlined,
+  DownloadOutlined, FileTextOutlined, UserOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import PhaseManager from './PhaseManager';
 import MatchManager from './MatchManager';
 import GlobalBetManager from './GlobalBetManager';
+import PlayerBetManager from './PlayerBetManager';
 import {
   recalculateAllPoints, getRanking, getAllBets, getAllMatches, getAllPhases, getBetLogs,
 } from '../../services/gameService';
@@ -399,6 +400,7 @@ function AdminPanel() {
     { key: 'fases',   label: <Space><PlusOutlined />Fases</Space>,           children: <PhaseManager /> },
     { key: 'jogos',   label: <Space><EditOutlined />Jogos</Space>,           children: <MatchManager /> },
     { key: 'global',  label: <Space><TrophyOutlined />Palpite Global</Space>, children: <GlobalBetManager /> },
+    { key: 'palpites-jogador', label: <Space><UserOutlined />Palpites de Jogadores</Space>, children: <PlayerBetManager /> },
     { key: 'export',  label: <Space><DownloadOutlined />Exportar</Space>,    children: <ExportPanel /> },
     { key: 'logs',    label: <Space><FileTextOutlined />Log de Palpites</Space>, children: <BetLogPanel /> },
     { key: 'diag',    label: <Space><BugOutlined />Diagnóstico</Space>,      children: <DiagnosticPanel /> },
