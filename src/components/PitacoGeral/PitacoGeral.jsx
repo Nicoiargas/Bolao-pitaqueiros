@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Card, Tag, Spin, Typography, Empty, Segmented, Space } from 'antd';
+import { Card, Tag, Spin, Typography, Empty, Segmented, Space, Collapse } from 'antd';
 import { TrophyOutlined, LockOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import 'dayjs/locale/pt-br';
@@ -223,6 +223,8 @@ function PitacoGeral() {
   const [selectedPhaseId, setSelectedPhaseId] = useState(null);
   const [globalBets, setGlobalBets]     = useState([]);
   const [globalResults, setGlobalResults] = useState(null);
+  const [openGlobal, setOpenGlobal]     = useState(false);
+  const [openJogos, setOpenJogos]       = useState(false);
   const scrollRef      = useRef(null);
   const hasScrolled    = useRef(false);
   const lastAutoPhase  = useRef(null);  // última fase auto-selecionada pelo sistema
@@ -314,14 +316,14 @@ function PitacoGeral() {
   }, [matchesByPhase, selectedPhaseId, phaseMap]);
 
   useEffect(() => {
-    if (loading || hasScrolled.current) return;
+    if (loading || !openJogos || hasScrolled.current) return;
     const today = dayjs().format('YYYY-MM-DD');
     const hasToday = currentMatches.some(m => dayjs(toDate(m.date)).format('YYYY-MM-DD') === today);
     if (hasToday) {
       hasScrolled.current = true;
       setTimeout(() => scrollRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 200);
     }
-  }, [loading, currentMatches]);
+  }, [loading, openJogos, currentMatches]);
 
   if (loading) {
     return (
@@ -356,54 +358,72 @@ function PitacoGeral() {
         </div>
       </div>
 
-      <GlobalPitacoPanel users={users} globalBets={globalBets} globalResults={globalResults} />
+      <Collapse
+        activeKey={openGlobal ? ['1'] : []}
+        onChange={(keys) => setOpenGlobal(keys.includes('1'))}
+        style={{ background: 'white', borderRadius: 12, marginBottom: 20 }}
+        items={[{
+          key: '1',
+          label: <Text strong>{openGlobal ? 'Ocultar Palpites Globais de Todos' : 'Ver Palpites Globais de Todos'}</Text>,
+          children: <GlobalPitacoPanel users={users} globalBets={globalBets} globalResults={globalResults} />,
+        }]}
+      />
 
-      {visiblePhases.length === 0 ? (
-        <Empty description="Nenhuma fase fechada ainda — os pitacos aparecem aqui após o fechamento." />
-      ) : (
-        <>
-          {/* Seletor de fase */}
-          {visiblePhases.length > 1 && (
-            <div style={{ marginBottom: 20 }}>
-              <Segmented
-                options={segmentedOptions}
-                value={selectedPhaseId}
-                onChange={setSelectedPhaseId}
-                style={{ background: 'white' }}
-              />
-            </div>
-          )}
+      <Collapse
+        activeKey={openJogos ? ['1'] : []}
+        onChange={(keys) => setOpenJogos(keys.includes('1'))}
+        style={{ background: 'white', borderRadius: 12 }}
+        items={[{
+          key: '1',
+          label: <Text strong>{openJogos ? 'Ocultar Pitacos dos Jogos' : 'Ver Pitacos dos Jogos'}</Text>,
+          children: visiblePhases.length === 0 ? (
+            <Empty description="Nenhuma fase fechada ainda — os pitacos aparecem aqui após o fechamento." />
+          ) : (
+            <>
+              {/* Seletor de fase */}
+              {visiblePhases.length > 1 && (
+                <div style={{ marginBottom: 20 }}>
+                  <Segmented
+                    options={segmentedOptions}
+                    value={selectedPhaseId}
+                    onChange={setSelectedPhaseId}
+                    style={{ background: 'white' }}
+                  />
+                </div>
+              )}
 
-          {/* Cards dos jogos */}
-          <Space direction="vertical" style={{ width: '100%' }} size={16}>
-            {currentMatches.length === 0 ? (
-              <Empty description="Nenhum pitaco disponível ainda para esta fase." />
-            ) : (() => {
-              const today = dayjs().format('YYYY-MM-DD');
-              let firstTodayFound = false;
-              return currentMatches.map(match => {
-                const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
-                const isScrollTarget = isToday && !firstTodayFound;
-                if (isScrollTarget) firstTodayFound = true;
-                return (
-                  <div
-                    key={match.id}
-                    ref={isScrollTarget ? scrollRef : null}
-                    style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}
-                  >
-                    <MatchCard
-                      match={match}
-                      phase={currentPhase}
-                      betsByMatch={betsByMatch}
-                      users={users}
-                    />
-                  </div>
-                );
-              });
-            })()}
-          </Space>
-        </>
-      )}
+              {/* Cards dos jogos */}
+              <Space direction="vertical" style={{ width: '100%' }} size={16}>
+                {currentMatches.length === 0 ? (
+                  <Empty description="Nenhum pitaco disponível ainda para esta fase." />
+                ) : (() => {
+                  const today = dayjs().format('YYYY-MM-DD');
+                  let firstTodayFound = false;
+                  return currentMatches.map(match => {
+                    const isToday = dayjs(toDate(match.date)).format('YYYY-MM-DD') === today;
+                    const isScrollTarget = isToday && !firstTodayFound;
+                    if (isScrollTarget) firstTodayFound = true;
+                    return (
+                      <div
+                        key={match.id}
+                        ref={isScrollTarget ? scrollRef : null}
+                        style={isScrollTarget ? { scrollMarginTop: 80 } : undefined}
+                      >
+                        <MatchCard
+                          match={match}
+                          phase={currentPhase}
+                          betsByMatch={betsByMatch}
+                          users={users}
+                        />
+                      </div>
+                    );
+                  });
+                })()}
+              </Space>
+            </>
+          ),
+        }]}
+      />
     </div>
   );
 }
