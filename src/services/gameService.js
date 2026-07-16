@@ -161,9 +161,19 @@ export async function getBetsByUser(userId) {
 }
 
 export async function getAllBets() {
-  const { data, error } = await supabase.from('bets').select('*');
-  if (error) throw error;
-  return data.map(mapBet);
+  // A tabela já passou de 1000 linhas — o Supabase corta o resultado nesse limite
+  // por padrão, então é preciso paginar para garantir que todos os palpites voltem.
+  const PAGE_SIZE = 1000;
+  let rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase.from('bets').select('*').range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows = rows.concat(data);
+    if (data.length < PAGE_SIZE) break;
+    from += PAGE_SIZE;
+  }
+  return rows.map(mapBet);
 }
 
 export async function updateBet(betId, homeGoals, awayGoals, penaltyWinner = null) {
@@ -179,7 +189,7 @@ export async function deleteBet(betId) {
 }
 
 export async function logBetAttempt(userId, matchId, homeGoals, awayGoals, success, failureReason = null) {
-  await supabase.from('bet_logs').insert({
+  const { error } = await supabase.from('bet_logs').insert({
     user_id:        userId,
     match_id:       matchId,
     home_goals:     homeGoals,
@@ -188,6 +198,10 @@ export async function logBetAttempt(userId, matchId, homeGoals, awayGoals, succe
     failure_reason: failureReason,
     attempt_at:     new Date().toISOString(),
   });
+  // Não bloqueia a UX (chamada é "fire and forget"), mas o erro não pode
+  // continuar invisível — sem isso, uma falha de RLS/permissão nunca aparecia
+  // em lugar nenhum, nem no console.
+  if (error) console.error('Falha ao registrar tentativa de palpite:', error.message);
 }
 
 export async function getBetLogs() {

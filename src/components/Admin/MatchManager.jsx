@@ -12,6 +12,7 @@ import {
   getAllPhases, getAllMatches, updateMatchResult, updateMatchTeams, recalculateAllPoints,
   updateMatchClosingTime, updateMatchDate,
 } from '../../services/gameService';
+import { brtDayjsToIso, isoToBrtDayjs, formatBrt } from '../../services/brtTime';
 import FlagImage from '../FlagImage';
 
 const { Text } = Typography;
@@ -234,7 +235,7 @@ function MatchCard({
               ) : (
                 <Space size={4} align="center">
                   {m.closingTime
-                    ? <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>⏰ {dayjs(m.closingTime).format('DD/MM HH:mm')}</Tag>
+                    ? <Tag color="purple" style={{ fontSize: 10, margin: 0 }}>⏰ {formatBrt(m.closingTime, 'DD/MM HH:mm')} (BRT)</Tag>
                     : <Tag style={{ fontSize: 10, margin: 0, color: '#aaa', borderColor: '#d9d9d9' }}>⏰ 12:00 padrão</Tag>}
                   <Button
                     size="small" type="text"
@@ -467,7 +468,7 @@ function MatchManager() {
   }, [onCancelTeamEdit]);
 
   const onOpenDeadlineEdit = useCallback((m) => {
-    const current = m.closingTime ? dayjs(m.closingTime) : null;
+    const current = m.closingTime ? isoToBrtDayjs(m.closingTime) : null;
     setDeadlineEdits(prev => ({ ...prev, [m.id]: current }));
   }, []);
 
@@ -481,7 +482,7 @@ function MatchManager() {
 
   const onSaveDeadline = useCallback(async (matchId) => {
     const val = deadlineEditsRef.current[matchId];
-    const iso = val ? val.toISOString() : null;
+    const iso = brtDayjsToIso(val);
     try {
       await updateMatchClosingTime(matchId, iso);
       message.success(iso ? 'Prazo de fechamento atualizado!' : 'Prazo removido — padrão 12:00 ativo');
@@ -500,7 +501,7 @@ function MatchManager() {
   }, []);
 
   const onOpenDateEdit = useCallback((m) => {
-    setDateEdits(prev => ({ ...prev, [m.id]: dayjs(toDate(m.date)) }));
+    setDateEdits(prev => ({ ...prev, [m.id]: isoToBrtDayjs(m.date) }));
   }, []);
 
   const onCancelDateEdit = useCallback((matchId) => {
@@ -515,7 +516,7 @@ function MatchManager() {
     const val = dateEditsRef.current[matchId];
     if (!val) { message.warning('Selecione data e hora'); return; }
     try {
-      await updateMatchDate(matchId, val.toDate());
+      await updateMatchDate(matchId, brtDayjsToIso(val));
       message.success('Data e hora do jogo atualizadas!');
       setDateEdits(prev => { const n = { ...prev }; delete n[matchId]; return n; });
       silentRefreshRef.current();
